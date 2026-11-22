@@ -2,9 +2,20 @@
 
 ### What is Docker?
 Docker is a platform and toolset for building, distributing, and running container images. An image packages an application and its runtime dependencies; a container runs an image with an isolated process environment. Containers use the host kernel, so they are lighter than full virtual machines but are not the same isolation boundary.
+```dockerfile
+FROM php:8.3-cli
+WORKDIR /app
+COPY . .
+CMD ["php", "-S", "0.0.0.0:8000", "-t", "public"]
+```
 
 ### What is a Docker container?
 A container is a running or stopped instance of an image with its own process, filesystem view, network configuration, and resource limits. Containers are designed to be replaceable; persist important data in volumes or external services rather than relying on a container’s writable layer.
+```bash
+docker run --name web -d -p 8080:80 nginx:alpine
+docker logs web
+docker stop web
+```
 
 ### How do you create and start a Docker container?
 Use `docker run` with an image and any needed options. The command creates the container if needed and starts it; `--detach` runs it in the background, `--name` assigns a readable name, and `-p` publishes a port.
@@ -15,6 +26,10 @@ docker run --name web -d -p 8080:80 nginx:alpine
 
 ### What is a Docker image?
 An image is a layered, read-only template containing a filesystem and configuration used to create containers. Images can be built from a Dockerfile, tagged, and stored in a registry. Pin versions or digests in production so builds are repeatable and review image updates deliberately.
+```bash
+docker build -t my-app:1.0 .
+docker image ls my-app
+```
 
 ### How do you list running and stopped containers?
 `docker ps` lists running containers. Add `-a` to include stopped containers as well. Use `docker ps --filter ...` or `docker inspect` to narrow down and inspect a container.
@@ -26,6 +41,10 @@ docker ps -a
 
 ### How does a Docker image differ from a container?
 An image is the immutable template; a container is an instance created from that template with runtime state. You can create multiple containers from one image. Removing a container does not remove the image, and deleting a container’s writable layer may discard data that was not placed in a volume.
+```bash
+docker pull nginx:alpine       # fetch the image
+docker run --name site nginx:alpine  # create and start a container
+```
 
 ### What is a Dockerfile, and how do you build an image from it?
 A Dockerfile contains ordered instructions for building an image, such as selecting a base, copying files, and setting the start command. Keep build context small, avoid copying secrets, use appropriate base versions, and run the application as a non-root user when practical.

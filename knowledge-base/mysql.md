@@ -11,24 +11,82 @@ LEFT JOIN orders ON orders.customer_id = customers.id;
 
 ### How do you optimize a MySQL query?
 Start with the actual query plan using `EXPLAIN` (or `EXPLAIN ANALYZE` where available). Add indexes that match selective filters, joins, and ordering; select only needed columns; keep predicates sargable; and avoid unnecessary sorting or duplicate elimination. Measure before and after with representative data—joins are not automatically faster than subqueries.
+```sql
+EXPLAIN ANALYZE
+SELECT id, created_at
+FROM orders
+WHERE customer_id = 42
+ORDER BY created_at DESC
+LIMIT 20;
+```
 
 ### What index types are commonly used in MySQL?
 Common index forms include primary-key, unique, regular (non-unique), composite, `FULLTEXT`, and `SPATIAL` indexes. InnoDB organizes table rows around the primary key, so secondary indexes also carry primary-key values. Choose columns and order based on query patterns; every index consumes space and adds write cost.
+```sql
+CREATE INDEX idx_orders_customer_date
+  ON orders (customer_id, created_at);
+
+CREATE FULLTEXT INDEX idx_articles_text
+  ON articles (title, body);
+```
 
 ### What is indexing, and why is it important?
 An index is a data structure that helps MySQL locate rows without scanning the entire table. It can speed up filtering, joins, and sorting, but uses storage and must be maintained on inserts, updates, and deletes. Indexes should match real workload predicates, and unused or redundant indexes should be reviewed.
+```sql
+CREATE INDEX idx_users_email ON users (email);
+
+SELECT id, name
+FROM users
+WHERE email = 'ada@example.com';
+```
 
 ### How does a stored procedure differ from a function in MySQL?
 A stored procedure is invoked with `CALL` and can return result sets or use `OUT` parameters; it is often used for a sequence of database operations. A stored function returns a value and can be used in expressions, subject to restrictions on side effects and statements. Use either when it meaningfully centralizes database logic; do not move logic into the database automatically.
+```sql
+DELIMITER //
+CREATE PROCEDURE find_user(IN user_id BIGINT)
+BEGIN
+  SELECT id, email FROM users WHERE id = user_id;
+END //
+DELIMITER ;
+
+CALL find_user(42);
+```
 
 ### What is the difference between CHAR and VARCHAR?
 `CHAR(n)` is fixed-length and is suited to values that are consistently short and fixed in size. `VARCHAR(n)` stores variable-length text up to the declared maximum and is suited to values with varying lengths. Actual storage and limits depend on character set and row format; choose based on the data rather than assuming `CHAR` is always faster.
+```sql
+CREATE TABLE country_codes (
+  code CHAR(2) NOT NULL,
+  display_name VARCHAR(100) NOT NULL
+);
+```
 
 ### What is database normalization, and why is it useful?
 Normalization organizes related data to reduce duplication and update anomalies. First normal form uses atomic values; second normal form removes partial dependency on part of a composite key; third normal form removes non-key attributes that depend on other non-key attributes. Normalize first for correctness, and denormalize selectively only after measuring a performance need.
+```sql
+CREATE TABLE customers (
+  id BIGINT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL
+);
+
+CREATE TABLE orders (
+  id BIGINT PRIMARY KEY,
+  customer_id BIGINT NOT NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+```
 
 ### What storage engines does MySQL provide?
 InnoDB is the default general-purpose engine and supports transactions, row-level locking, and foreign keys. MyISAM is a legacy non-transactional engine without foreign keys. Other engines such as MEMORY, NDB, or MyRocks may be available depending on the distribution and installation. Check the server’s supported engines before relying on one.
+```sql
+CREATE TABLE transactional_orders (
+  id BIGINT PRIMARY KEY,
+  total DECIMAL(10, 2) NOT NULL
+) ENGINE=InnoDB;
+
+SHOW ENGINES;
+```
 
 ### How do you back up and restore a MySQL database?
 For a logical backup, `mysqldump` can export schema and data; restore it with the `mysql` client. For a consistent InnoDB snapshot, use `--single-transaction`, and coordinate with writes or other engines as needed. Larger systems may use physical backups and binary logs for point-in-time recovery. Test restores regularly and protect backup credentials and files.
@@ -60,12 +118,34 @@ HAVING COUNT(*) > 1;
 
 ### What causes MySQL performance problems, and how do you address them?
 Typical causes include full table scans, missing or poorly ordered indexes, expensive sorts, oversized result sets, lock contention, and insufficient memory or I/O capacity. Inspect slow-query logs and execution plans, improve the query or index, and measure again under realistic load. Check connections and contention before changing server settings.
+```sql
+EXPLAIN
+SELECT * FROM orders
+WHERE customer_id = 42 AND status = 'paid';
+
+CREATE INDEX idx_orders_customer_status
+  ON orders (customer_id, status);
+```
 
 ### What are foreign keys and referential integrity?
 A foreign key constrains values in one table to reference a candidate key in another table. Referential integrity prevents orphaned relationships and can define actions such as `CASCADE`, `RESTRICT`, or `SET NULL` for updates and deletes. In MySQL, use a supporting engine such as InnoDB and make the related column types and indexes compatible.
+```sql
+CREATE TABLE orders (
+  id BIGINT PRIMARY KEY,
+  customer_id BIGINT NOT NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id)
+    ON DELETE RESTRICT
+);
+```
 
 ### What are the ACID properties?
 ACID describes transaction guarantees: **Atomicity** means all-or-nothing; **Consistency** preserves defined constraints; **Isolation** controls interactions among concurrent transactions; **Durability** keeps committed data through failures. In MySQL, guarantees depend on the storage engine, transaction settings, and durability configuration.
+```sql
+START TRANSACTION;
+UPDATE accounts SET balance = balance - 25 WHERE id = 1;
+UPDATE accounts SET balance = balance + 25 WHERE id = 2;
+COMMIT;
+```
 
 ### How do you implement full-text search in MySQL?
 Create a `FULLTEXT` index on supported text columns and query it with `MATCH ... AGAINST`. MySQL supports natural-language and Boolean search modes. Check token-size, stopword, language, and engine behavior for your version, and use a dedicated search service if the relevance or scale requirements exceed what the database search provides.
@@ -85,6 +165,12 @@ WHERE MATCH(title, body) AGAINST ('laravel indexing' IN NATURAL LANGUAGE MODE);
 
 ### How do InnoDB and MyISAM differ?
 InnoDB supports transactions, foreign keys, crash recovery, and row-level locking, making it the normal choice for application tables. MyISAM lacks transactions and foreign keys and uses table-level locking; it is generally legacy for modern transactional workloads. Choose an engine based on required guarantees, not old assumptions about read speed.
+```sql
+CREATE TABLE payments (
+  id BIGINT PRIMARY KEY,
+  amount DECIMAL(10, 2) NOT NULL
+) ENGINE=InnoDB;
+```
 
 ### What are triggers, and how do you create one?
 A trigger is SQL that runs automatically before or after an insert, update, or delete on a table. Triggers can enforce database-side rules or maintain audit data, but they introduce implicit behavior that can be difficult to trace. Keep them small, document them, and consider application-level logic when it is easier to test and maintain.
@@ -98,12 +184,34 @@ SET NEW.created_at = COALESCE(NEW.created_at, CURRENT_TIMESTAMP);
 
 ### What is table partitioning in MySQL?
 Partitioning divides one logical table into smaller physical partitions based on a key or range, while queries still address the table normally. It can help manage large time-based datasets and enable partition pruning when predicates match the partition key. It is not a substitute for good indexes, and MySQL imposes constraints on partitioned tables, including unique-key requirements.
+```sql
+CREATE TABLE events (
+  id BIGINT NOT NULL,
+  occurred_on DATE NOT NULL,
+  PRIMARY KEY (id, occurred_on)
+)
+PARTITION BY RANGE (YEAR(occurred_on)) (
+  PARTITION p2025 VALUES LESS THAN (2026),
+  PARTITION pmax VALUES LESS THAN MAXVALUE
+);
+```
 
 ### What is MySQL replication?
 Replication copies changes from a source server to one or more replicas, commonly through the binary log. It can support read scaling, reporting, and recovery, but asynchronous replication can lag and does not automatically provide safe failover. Monitor lag, configure replication consistently, and use a documented failover process.
+```text
+Example flow: `source server (binary log) → replica (relay log) → replica data`. Configure source and replica with unique server IDs, then monitor replication status and lag with the commands supported by your MySQL version.
+```
 
 ### How do you handle deadlocks in MySQL?
 A deadlock happens when transactions hold locks the others need, creating a cycle. InnoDB detects the cycle and rolls back one transaction. Keep transactions short, access rows in a consistent order, index update predicates, and retry the rolled-back transaction with bounded backoff when the operation is safe to repeat.
+```sql
+START TRANSACTION;
+UPDATE inventory SET quantity = quantity - 1 WHERE product_id = 7;
+COMMIT;
+
+-- In application code, retry the whole transaction a small, bounded number of times
+-- when MySQL reports a deadlock (error 1213).
+```
 
 ### How do you query the second-highest salary?
 If “second highest” means the second distinct salary, use the maximum salary below the overall maximum. This returns `NULL` if fewer than two distinct non-`NULL` salaries exist. To retrieve employees tied at that salary, use `DENSE_RANK` instead.

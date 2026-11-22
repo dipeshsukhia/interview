@@ -2,6 +2,10 @@
 
 ### What are JavaScript’s data types?
 JavaScript has seven primitive types: `undefined`, `null`, `boolean`, `number`, `bigint`, `string`, and `symbol`. All other values are objects; functions are callable objects. Primitives are immutable values, while objects can hold mutable properties.
+```js
+const values = [undefined, null, true, 42, 10n, "hello", Symbol("id"), { active: true }];
+console.log(values.map((value) => typeof value));
+```
 
 ### What is a closure in JavaScript?
 A closure is a function together with access to the lexical variables from the scope where it was created. It lets inner functions retain data after the outer function has returned, which is useful for callbacks and private state.
@@ -19,6 +23,14 @@ next(); // 2
 
 ### How do let and var differ?
 `let` is block-scoped and cannot be redeclared in the same scope; it can be reassigned. `var` is function-scoped, is hoisted with an initial value of `undefined`, and can be redeclared, which can produce surprising behavior. Prefer `const` by default, then `let` when reassignment is needed.
+```js
+if (true) {
+  let blockScoped = "inside";
+  var functionScoped = "still visible outside this block";
+}
+console.log(functionScoped);
+// blockScoped is not defined here.
+```
 
 ### How do you handle asynchronous operations in JavaScript?
 Use Promises and `async`/`await` for most asynchronous work. Handle failures with `try`/`catch`, and use `Promise.all` when independent operations can run concurrently. Callbacks are still used by some APIs, and can be wrapped in Promises when needed.
@@ -41,6 +53,11 @@ async function loadUser(id) {
 
 ### What is a prototype in JavaScript?
 A prototype is an object from which another object can inherit properties and methods. Property lookup follows the prototype chain. JavaScript classes provide syntax over this prototype-based model; use composition and clear APIs instead of modifying built-in prototypes.
+```js
+const animal = { speak() { return "sound"; } };
+const dog = Object.create(animal);
+dog.speak(); // inherited through the prototype chain
+```
 
 ### What do bind, call, and apply do?
 They set the `this` value for a function. `call` invokes it immediately with positional arguments; `apply` invokes it with an array-like argument list; `bind` returns a new function with `this` (and optionally leading arguments) fixed for a later call.
