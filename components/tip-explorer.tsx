@@ -1,0 +1,78 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Category, Tip } from "@/lib/content";
+
+export function TipExplorer({
+  tips,
+  categories,
+  initialCategory,
+}: {
+  tips: Tip[];
+  categories: Category[];
+  initialCategory?: string;
+}) {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState(initialCategory ?? "all");
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        inputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return tips.filter((tip) => {
+      const matchesCategory = category === "all" || tip.categorySlug === category;
+      const matchesQuery = !normalized || `${tip.title} ${tip.category} ${tip.searchableText}`.toLowerCase().includes(normalized);
+      return matchesCategory && matchesQuery;
+    });
+  }, [tips, query, category]);
+
+  function handleCategoryChange(value: string) {
+    if (initialCategory) {
+      router.push(value === "all" ? "/all-questions/" : `/${value}/`);
+      return;
+    }
+    setCategory(value);
+  }
+
+  return (
+    <>
+      <div className="explorer-tools">
+        <label className="search-box">
+          <span className="search-icon" aria-hidden="true">⌕</span>
+          <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search questions, concepts, code…" aria-label="Search interview questions" />
+          <kbd>⌘ K</kbd>
+        </label>
+        <select className="topic-filter" aria-label="Filter by category" value={category} onChange={(event) => handleCategoryChange(event.target.value)}>
+          <option value="all">All technologies</option>
+          {categories.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>)}
+        </select>
+      </div>
+      <div className="result-meta"><span>{filtered.length} {filtered.length === 1 ? "question" : "questions"}</span>{query && <span> matching “{query}”</span>}</div>
+      {filtered.length ? (
+        <div className="tip-list">
+          {filtered.map((tip, index) => (
+            <Link className="tip-row" href={`/${tip.categorySlug}/${tip.slug}/`} key={`${tip.categorySlug}-${tip.slug}`}>
+              <span className="tip-index">{String(index + 1).padStart(2, "0")}</span>
+              <span className="tip-row-content">
+                <span className="tip-row-title">{tip.title}</span>
+                <span className="tip-row-excerpt">{tip.description}</span>
+              </span>
+              <span className="tip-row-category">{tip.category}</span>
+            </Link>
+          ))}
+        </div>
+      ) : <div className="empty-state"><span>⌕</span><strong>No questions found</strong><p>Try a different search or technology.</p></div>}
+    </>
+  );
+}
