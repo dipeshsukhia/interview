@@ -263,7 +263,7 @@ final class InvoiceTotal
 ```
 
 ### Does PHP support method overloading?
-PHP does not choose between multiple methods with the same name based on parameter types or count. It does provide magic methods such as `__call` and `__callStatic` to handle calls to inaccessible or undefined methods dynamically. For ordinary optional inputs, use defaults, union types, or variadic parameters instead.
+PHP does not choose between multiple methods with the same name based on parameter types or count. The `__call` and `__callStatic` magic methods can intercept calls to missing or inaccessible methods, but that is dynamic dispatch rather than language-level overloading. Validate the requested method name and arguments when using magic dispatch. For ordinary optional inputs, use defaults, union types, or variadic parameters instead.
 
 PHP does support function overloading in a different sense for extensions, but userland classes do not have traditional signature-based overload resolution. Magic methods like `__call()` can intercept missing or inaccessible method calls, yet they weaken discoverability and static analysis. Prefer explicit methods, optional parameters, or distinct request objects.
 

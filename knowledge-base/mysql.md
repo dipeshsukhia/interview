@@ -274,7 +274,7 @@ COMMIT;
 ```
 
 ### How do you query the second-highest salary?
-If “second highest” means the second distinct salary, use the maximum salary below the overall maximum. This returns `NULL` if fewer than two distinct non-`NULL` salaries exist. To retrieve employees tied at that salary, use `DENSE_RANK` instead.
+If “second highest” means the second distinct salary, use the maximum salary below the overall maximum. This returns `NULL` if fewer than two distinct non-`NULL` salaries exist. Clarify whether the interviewer wants a salary value, one employee row, or all employees tied at that salary; use `DENSE_RANK()` for the last case.
 
 
 Clarify whether ties count as one distinct salary or whether the second row in sorted order is intended. The shown query returns the second distinct value; `LIMIT` with an offset can produce a different answer when salaries tie. Use window functions such as `DENSE_RANK()` when the result must include all employees at that salary.
@@ -295,4 +295,68 @@ If a grade has no students, a query starting from the students table cannot retu
 SELECT grade, COUNT(*) AS student_count
 FROM students
 GROUP BY grade;
+```
+
+### What are transaction isolation levels in MySQL?
+Isolation determines which changes a transaction can observe while other transactions run. InnoDB supports `READ UNCOMMITTED`, `READ COMMITTED`, `REPEATABLE READ`, and `SERIALIZABLE`; its default is `REPEATABLE READ`. Stronger isolation can prevent more anomalies but may increase locking or retries. Explain the actual business invariant first, then choose an isolation level or explicit locking that preserves it. Test concurrent behavior because a single-session query cannot reveal races.
+
+```sql
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+START TRANSACTION;
+SELECT balance FROM accounts WHERE id = 7 FOR UPDATE;
+-- Perform related writes, then COMMIT or ROLLBACK.
+```
+
+### How do you find the top three salaries in each department?
+Use `ROW_NUMBER()` when exactly three rows per department are needed, with a stable tiebreaker such as employee ID. Use `DENSE_RANK()` when all employees tied at the third distinct salary should be included. Window functions are available in MySQL 8.0 and later. Filtering the window result requires an outer query because window expressions are evaluated after the `WHERE` clause.
+
+```sql
+WITH ranked AS (
+  SELECT id, department_id, salary,
+         ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary DESC, id) AS rn
+  FROM employees
+)
+SELECT id, department_id, salary FROM ranked WHERE rn <= 3;
+```
+
+### How do you calculate a running total in MySQL?
+A windowed `SUM()` adds rows in the specified order without collapsing them into one group. Include a unique tiebreaker so rows with the same date produce a deterministic sequence. The explicit `ROWS` frame avoids surprising peer grouping. For an account ledger, partition by account so each account has its own running balance.
+
+```sql
+SELECT account_id, posted_at, id, amount,
+       SUM(amount) OVER (
+         PARTITION BY account_id ORDER BY posted_at, id
+         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+       ) AS running_total
+FROM ledger_entries;
+```
+
+### How do you find consecutive date ranges with gaps and islands?
+An island is a run of consecutive dates; a gap separates two runs. One approach assigns `ROW_NUMBER()` to distinct dates and subtracts that sequence from each date. Consecutive dates get the same grouping key. Deduplicate first when several rows can share a date, and decide whether weekends or missing business days should count as gaps.
+
+```sql
+WITH days AS (
+  SELECT DISTINCT activity_date FROM activity
+), numbered AS (
+  SELECT activity_date, ROW_NUMBER() OVER (ORDER BY activity_date) AS rn
+  FROM days
+), islands AS (
+  SELECT activity_date, DATE_SUB(activity_date, INTERVAL rn DAY) AS island_key
+  FROM numbered
+)
+SELECT MIN(activity_date) AS start_date, MAX(activity_date) AS end_date
+FROM islands GROUP BY island_key ORDER BY start_date;
+```
+
+### Why can keyset pagination outperform OFFSET pagination?
+`LIMIT ... OFFSET` often makes the database examine and skip earlier rows as the page number grows, and concurrent inserts can shift results between pages. Keyset pagination resumes after the last seen sort key, allowing an index to find the next page efficiently. Use a deterministic order that includes a unique key, and carry both ordered values in the cursor. Keyset pagination is best for next or previous navigation rather than jumping directly to an arbitrary page number.
+
+```sql
+CREATE INDEX idx_posts_created_id ON posts (created_at DESC, id DESC);
+SELECT id, title, created_at
+FROM posts
+WHERE created_at < :last_created_at
+   OR (created_at = :last_created_at AND id < :last_id)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
 ```

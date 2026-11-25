@@ -1,6 +1,6 @@
 # Interview Guide
 
-A static interview preparation site with **99 questions and answers** across seven technology collections: PHP, React, MySQL, JavaScript, Git, Composer, and Docker. Each question has its own page, and Markdown code examples include a copy button.
+A static interview preparation site with **Laravel, PHP, React, MySQL, JavaScript, Git, Composer, and Docker interview questions** across eight technology collections. Each question has its own page, and Markdown code examples include a copy button.
 
 The question and answer content lives in `knowledge-base/`, one Markdown file per technology. The original workbook is kept locally and ignored by Git; the site does not need it to build.
 

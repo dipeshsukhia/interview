@@ -1,5 +1,6 @@
 const paths: Record<string, React.ReactNode> = {
   "all-questions": <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
+  laravel: <><path d="M4 4v12l8 5 8-5V4l-8 5-8-5Z" /><path d="M4 4v9l8 5 8-5V4M12 9v12" /></>,
   php: <><path d="M3 12c1-4 4-6 9-6s8 2 9 6c-1 4-4 6-9 6s-8-2-9-6Z" /><path d="M8 10v5m0-5h3a2 2 0 0 1 0 4H8m6-4v5m0-5h3a2 2 0 0 1 0 4h-3" /></>,
   react: <><ellipse cx="12" cy="12" rx="10" ry="4" /><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)" /><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)" /><circle cx="12" cy="12" r="1.5" /></>,
   mysql: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></>,

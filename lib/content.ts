@@ -18,6 +18,7 @@ export type Category = {
 };
 
 const preferredContentOrder = [
+  "laravel.md",
   "php.md",
   "react.md",
   "mysql.md",
