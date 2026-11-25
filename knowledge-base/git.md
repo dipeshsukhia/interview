@@ -111,3 +111,8 @@ git reflog
 # Recover a commit by creating a branch at its reflog hash:
 git branch recovery HEAD@{2}
 ```
+
+### Rebase vs merge; undoing a bad shared commit; conflicts?
+Rebase your own local feature branch onto the latest main to get a clean, linear history before opening a PR. Merge when the branch is shared or already public (never rewrite shared history), or when you want to preserve the branch context.
+Undo a bad commit on a shared branch: use git revert <sha>, which adds a new commit that reverses the change and is safe for everyone. Do not reset --hard and force-push a shared branch.
+Resolving conflicts safely: pull the latest main first, run git status and git diff --name-only --diff-filter=U to see conflicts, understand both sides (check git log for intent), resolve manually, run the tests, then git add and continue. If you get lost, git rebase --abort or git merge --abort returns you to a clean state. Use git rerere and small, frequent merges to reduce pain.

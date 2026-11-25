@@ -120,3 +120,29 @@ docker network create app-network
 docker network ls
 docker network inspect app-network
 ```
+
+### Production Dockerfile for a FastAPI service?
+# ---- build stage ----
+FROM python:3.12-slim AS builder
+ENV PIP_NO_CACHE_DIR=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --prefix=/install -r requirements.txt
+
+# ---- runtime stage ----
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1
+RUN useradd -r -u 10001 appuser
+WORKDIR /app
+COPY --from=builder /install /usr/local
+COPY --chown=appuser:appuser app/ ./app/
+USER appuser
+EXPOSE 8000
+HEALTHCHECK CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8000/healthz')"
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+Follow-up points:
+- Multi-stage builds: compilers and build tools stay in the builder stage; the runtime image is smaller and has a smaller attack surface.
+- Image size: slim base image, no cache, .dockerignore for tests and .git.
+- Non-root: a compromised process cannot write to system paths; also set readOnlyRootFilesystem in Kubernetes.
+- Layer caching: copy dependency files and install before copying source code, so code changes do not reinstall dependencies.
+- Pin base image versions (or digests), scan images (Trivy, ECR scanning), and handle SIGTERM for graceful shutdown (exec-form CMD so signals reach the process).

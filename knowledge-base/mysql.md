@@ -372,3 +372,9 @@ JOIN departments d ON e.department_id = d.id
 SET e.salary = e.salary * 1.10
 WHERE d.name = 'Engineering';
 ```
+
+### Database index; when it hurts; N+1?
+Index: a separate sorted structure (usually a B-tree) that lets the database find rows without scanning the table. Speeds up WHERE, JOIN, and ORDER BY on indexed columns.
+When it hurts: every insert, update and delete must also update each index (slower writes); indexes consume disk and memory; low-selectivity columns (like a boolean) rarely help; too many indexes confuse the planner and bloat storage.
+N+1: one query loads N parent rows, then N more queries load each child. Example: list 100 jobs, then query documents for each job in a loop = 101 queries. Fix with a join, selectinload/joinedload in SQLAlchemy, or a single WHERE job_id IN (...) query.
+Follow-up: find a slow query in production: enable pg_stat_statements or the slow query log, look at APM traces (New Relic shows DB time per transaction), run EXPLAIN (ANALYZE, BUFFERS) on the offender, check for sequential scans and missing indexes, then add the index or rewrite the query and verify with before/after timings.

@@ -20,12 +20,19 @@ export type Category = {
 const preferredContentOrder = [
   "laravel.md",
   "php.md",
+  "python.md",
   "react.md",
   "mysql.md",
   "javascript.md",
+  "genai.md",
+  "document-processing.md",
+  "aws.md",
+  "devops.md",
+  "security.md",
   "git.md",
-  "composer.md",
   "docker.md",
+  "composer.md",
+  "engineering.md",
 ];
 
 function slugify(value: string) {
