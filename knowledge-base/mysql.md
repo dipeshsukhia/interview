@@ -1,56 +1,31 @@
 ## MySQL
 
 ### What is a JOIN in MySQL, and what are its common types?
-A `JOIN` combines rows from tables using a related condition. `INNER JOIN` returns matching rows; `LEFT JOIN` keeps every left row and fills unmatched right columns with `NULL`; `RIGHT JOIN` does the reverse. MySQL has no native `FULL OUTER JOIN`, but it can be assembled from a left join and the unmatched rows from a right-side query with `UNION`.
-
-
-The join condition should express the relationship between rows, usually a primary key and foreign key. A missing or incomplete condition can create a Cartesian product and multiply rows unexpectedly. When checking for the existence of related rows without selecting their columns, `EXISTS` can express intent clearly.
-
-```sql
-SELECT customers.name, orders.id
-FROM customers
-LEFT JOIN orders ON orders.customer_id = customers.id;
-```
+- **INNER JOIN** — only rows with matches in both tables.
+- **LEFT JOIN** — all rows from the left table, matched rows from the right (NULL where no match).
+- **RIGHT JOIN** — mirror of LEFT JOIN.
+- **FULL OUTER JOIN** — all rows from both sides (MySQL doesn't support this directly — emulated via `LEFT JOIN UNION RIGHT JOIN`).
+- **CROSS JOIN** — Cartesian product, every row of A with every row of B.
+- **SELF JOIN** — a table joined to itself, e.g., finding employees and their managers in the same `employees` table.
 
 ### How do you optimize a MySQL query?
-Start with the actual query plan using `EXPLAIN` (or `EXPLAIN ANALYZE` where available). Add indexes that match selective filters, joins, and ordering; select only needed columns; keep predicates sargable; and avoid unnecessary sorting or duplicate elimination. Measure before and after with representative data—joins are not automatically faster than subqueries.
-
-An index is not automatically beneficial: it adds storage and slows writes, and the optimizer may correctly choose a table scan for small or low-selectivity data. Check actual row estimates and execution timing, then test one change at a time. Query plans should be evaluated using realistic table sizes and representative parameter values.
-
-```sql
-EXPLAIN ANALYZE
-SELECT id, created_at
-FROM orders
-WHERE customer_id = 42
-ORDER BY created_at DESC
-LIMIT 20;
-```
+`EXPLAIN` the query first to see the execution plan — check for full table scans (`type: ALL`), missing index usage, large `rows examined`. Then: add appropriate indexes matching `WHERE`/`JOIN`/`ORDER BY` columns, avoid `SELECT *` (fetch only needed columns), avoid functions on indexed columns in `WHERE` (`WHERE YEAR(created_at) = 2024` can't use an index on `created_at`; rewrite as a range instead), check if a composite index's column order matches the query, and check the slow query log for the actual patterns hitting production rather than guessing.
 
 ### What index types are commonly used in MySQL?
-Common index forms include primary-key, unique, regular (non-unique), composite, `FULLTEXT`, and `SPATIAL` indexes. InnoDB organizes table rows around the primary key, so secondary indexes also carry primary-key values. Choose columns and order based on query patterns; every index consumes space and adds write cost.
-
-For a composite index, column order matters: a leading prefix can support some queries, but an index on `(a, b)` generally cannot efficiently serve a predicate on `b` alone. Unique indexes also enforce data integrity. Review existing indexes to prevent redundant overlap, and confirm optimizer use rather than adding every queried column.
-
-```sql
-CREATE INDEX idx_orders_customer_date
-  ON orders (customer_id, created_at);
-
-CREATE FULLTEXT INDEX idx_articles_text
-  ON articles (title, body);
-```
+An index is a data structure (typically a B-Tree, or hash for MEMORY tables) that speeds up lookups at the cost of extra storage and slower writes (every insert/update/delete has to update the index too).
+- **Primary index** — on the primary key.
+- **Unique index** — enforces uniqueness.
+- **Composite (multi-column) index** — covers multiple columns; column order matters — a composite index on `(a, b)` helps queries filtering on `a` alone or `a AND b`, but not `b` alone.
+- **Full-text index** — for `MATCH() AGAINST()` text search.
+- **Covering index** — an index that contains every column a query needs, so MySQL never touches the actual table row.
 
 ### What is indexing, and why is it important?
-An index is a data structure that helps MySQL locate rows without scanning the entire table. It can speed up filtering, joins, and sorting, but uses storage and must be maintained on inserts, updates, and deletes. Indexes should match real workload predicates, and unused or redundant indexes should be reviewed.
-
-Indexes are most effective when their leading columns match common equality filters, joins, or range scans. A covering index may satisfy a query without reading full table rows, but wide indexes increase memory and write costs. Use `EXPLAIN` and workload metrics to confirm that an index improves the queries that matter.
-
-```sql
-CREATE INDEX idx_users_email ON users (email);
-
-SELECT id, name
-FROM users
-WHERE email = 'ada@example.com';
-```
+An index is a data structure (typically a B-Tree, or hash for MEMORY tables) that speeds up lookups at the cost of extra storage and slower writes (every insert/update/delete has to update the index too).
+- **Primary index** — on the primary key.
+- **Unique index** — enforces uniqueness.
+- **Composite (multi-column) index** — covers multiple columns; column order matters — a composite index on `(a, b)` helps queries filtering on `a` alone or `a AND b`, but not `b` alone.
+- **Full-text index** — for `MATCH() AGAINST()` text search.
+- **Covering index** — an index that contains every column a query needs, so MySQL never touches the actual table row.
 
 ### How does a stored procedure differ from a function in MySQL?
 A stored procedure is invoked with `CALL` and can return result sets or use `OUT` parameters; it is often used for a sequence of database operations. A stored function returns a value and can be used in expressions, subject to restrictions on side effects and statements. Use either when it meaningfully centralizes database logic; do not move logic into the database automatically.
@@ -69,34 +44,14 @@ CALL find_user(42);
 ```
 
 ### What is the difference between CHAR and VARCHAR?
-`CHAR(n)` is fixed-length and is suited to values that are consistently short and fixed in size. `VARCHAR(n)` stores variable-length text up to the declared maximum and is suited to values with varying lengths. Actual storage and limits depend on character set and row format; choose based on the data rather than assuming `CHAR` is always faster.
-
-Both declarations specify character lengths, not byte lengths, and the actual storage depends on the character set. `CHAR` values are padded according to MySQL behavior, while `VARCHAR` stores a length prefix plus the value. Avoid choosing `CHAR` for speed without measurement; compare semantics and maximum row size for the intended data.
-
-```sql
-CREATE TABLE country_codes (
-  code CHAR(2) NOT NULL,
-  display_name VARCHAR(100) NOT NULL
-);
-```
+`CHAR(n)` is fixed-length — always stores `n` bytes/chars, padded with spaces, slightly faster for fixed-size data (e.g., country codes). `VARCHAR(n)` is variable-length — stores only the actual content plus 1-2 bytes for length, better for data that varies in size (names, emails).
 
 ### What is database normalization, and why is it useful?
-Normalization organizes related data to reduce duplication and update anomalies. First normal form uses atomic values; second normal form removes partial dependency on part of a composite key; third normal form removes non-key attributes that depend on other non-key attributes. Normalize first for correctness, and denormalize selectively only after measuring a performance need.
-
-Normalization reduces update anomalies: a customer address should not need to be changed in every order row, for example. Foreign keys and unique constraints help enforce the resulting relationships. Highly normalized schemas may require more joins, but denormalizing should be driven by measured performance needs and kept consistent transactionally.
-
-```sql
-CREATE TABLE customers (
-  id BIGINT PRIMARY KEY,
-  name VARCHAR(200) NOT NULL
-);
-
-CREATE TABLE orders (
-  id BIGINT PRIMARY KEY,
-  customer_id BIGINT NOT NULL,
-  FOREIGN KEY (customer_id) REFERENCES customers(id)
-);
-```
+The process of structuring tables to reduce data redundancy and avoid update anomalies.
+- **1NF** — atomic columns, no repeating groups (e.g., don't store `phone1, phone2, phone3` — use a separate table).
+- **2NF** — 1NF + every non-key column depends on the *whole* primary key (relevant for composite keys — no partial dependency).
+- **3NF** — 2NF + no transitive dependency (a non-key column shouldn't depend on another non-key column).
+In practice, most production schemas target 3NF, then deliberately denormalize specific tables for read performance where justified (e.g., a cached `orders_count` on a `users` table).
 
 ### What storage engines does MySQL provide?
 InnoDB is the default general-purpose engine and supports transactions, row-level locking, and foreign keys. MyISAM is a legacy non-transactional engine without foreign keys. Other engines such as MEMORY, NDB, or MyRocks may be available depending on the distribution and installation. Check the server’s supported engines before relying on one.
@@ -124,26 +79,22 @@ mysql -u app_user -p app_db < app_db.sql
 ```
 
 ### What is a transaction in MySQL?
-A transaction groups operations so they succeed or fail as a unit. With a transactional engine such as InnoDB, start with `START TRANSACTION`, then `COMMIT` to keep changes or `ROLLBACK` to undo them. Keep transactions short and handle errors so locks are not held longer than necessary.
-
-
-Transactions provide a way to group related changes, but they do not automatically make application workflows safe if errors are ignored. Use an exception-safe pattern that rolls back on failure, and keep the transaction scope narrow. DDL statements may cause implicit commits depending on the statement and server version.
+A transaction is a group of operations executed as a single atomic unit.
+- **Atomicity** — all operations succeed or none do.
+- **Consistency** — the DB moves from one valid state to another, respecting constraints.
+- **Isolation** — concurrent transactions don't interfere with each other's intermediate state.
+- **Durability** — once committed, changes survive a crash.
 
 ```sql
 START TRANSACTION;
-UPDATE accounts SET balance = balance - 50 WHERE id = 1;
-UPDATE accounts SET balance = balance + 50 WHERE id = 2;
-COMMIT;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+COMMIT; -- or ROLLBACK on failure
 ```
 
 ### How can you find and handle duplicate records?
-Define what makes a row a duplicate, then group by those columns to identify repeated values. Prefer preventing future duplicates with a `UNIQUE` constraint. Before removing existing duplicates, back up the data and verify which row should be retained; use a stable primary key to delete only extras.
-
-
-The definition of duplicate must include the correct key columns and treatment of `NULL`, case, whitespace, and collation. Clean existing data before adding a unique constraint, otherwise constraint creation can fail. When removing duplicates, use a deterministic retention rule such as keeping the smallest ID or most recently verified row.
-
 ```sql
-SELECT email, COUNT(*) AS copies
+SELECT email, COUNT(*) AS cnt
 FROM users
 GROUP BY email
 HAVING COUNT(*) > 1;
@@ -164,29 +115,20 @@ CREATE INDEX idx_orders_customer_status
 ```
 
 ### What are foreign keys and referential integrity?
-A foreign key constrains values in one table to reference a candidate key in another table. Referential integrity prevents orphaned relationships and can define actions such as `CASCADE`, `RESTRICT`, or `SET NULL` for updates and deletes. In MySQL, use a supporting engine such as InnoDB and make the related column types and indexes compatible.
-
-Foreign keys are enforced by InnoDB and require compatible column definitions and suitable indexes. Cascading deletes can be convenient but may remove many rows implicitly, so choose actions that match the domain’s lifecycle. For large migrations, plan how to validate and add constraints without disrupting availability.
-
-```sql
-CREATE TABLE orders (
-  id BIGINT PRIMARY KEY,
-  customer_id BIGINT NOT NULL,
-  FOREIGN KEY (customer_id) REFERENCES customers(id)
-    ON DELETE RESTRICT
-);
-```
+Primary key — uniquely identifies each row, cannot be NULL, one per table (can be composite). Foreign key — a column referencing a primary/unique key in another table, enforcing referential integrity. Unique key — enforces uniqueness like a primary key but allows NULLs (MySQL allows multiple NULLs in a unique column) and a table can have several.
 
 ### What are the ACID properties?
-ACID describes transaction guarantees: **Atomicity** means all-or-nothing; **Consistency** preserves defined constraints; **Isolation** controls interactions among concurrent transactions; **Durability** keeps committed data through failures. In MySQL, guarantees depend on the storage engine, transaction settings, and durability configuration.
-
-ACID is a useful way to describe transactional guarantees, but isolation levels trade off concurrency against phenomena such as non-repeatable reads or phantom rows. InnoDB defaults and durability settings should be understood for the workload. Application retry logic must account for serialization failures and deadlocks without duplicating external side effects.
+A transaction is a group of operations executed as a single atomic unit.
+- **Atomicity** — all operations succeed or none do.
+- **Consistency** — the DB moves from one valid state to another, respecting constraints.
+- **Isolation** — concurrent transactions don't interfere with each other's intermediate state.
+- **Durability** — once committed, changes survive a crash.
 
 ```sql
 START TRANSACTION;
-UPDATE accounts SET balance = balance - 25 WHERE id = 1;
-UPDATE accounts SET balance = balance + 25 WHERE id = 2;
-COMMIT;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+COMMIT; -- or ROLLBACK on failure
 ```
 
 ### How do you implement full-text search in MySQL?
@@ -209,29 +151,12 @@ WHERE MATCH(title, body) AGAINST ('laravel indexing' IN NATURAL LANGUAGE MODE);
 ```
 
 ### How do InnoDB and MyISAM differ?
-InnoDB supports transactions, foreign keys, crash recovery, and row-level locking, making it the normal choice for application tables. MyISAM lacks transactions and foreign keys and uses table-level locking; it is generally legacy for modern transactional workloads. Choose an engine based on required guarantees, not old assumptions about read speed.
-
-InnoDB’s row-level locking is subject to indexes and lock ranges; poorly indexed updates can still lock many rows. MyISAM’s lack of transactions means a multi-step update cannot be rolled back atomically. For most new transactional systems, InnoDB is the practical default, while legacy MyISAM tables should be assessed before migration.
-
-```sql
-CREATE TABLE payments (
-  id BIGINT PRIMARY KEY,
-  amount DECIMAL(10, 2) NOT NULL
-) ENGINE=InnoDB;
-```
+InnoDB — supports transactions (ACID), foreign keys, row-level locking, crash recovery; the default in modern MySQL and what you should use for almost everything. MyISAM — no transactions, table-level locking (worse for concurrent writes), no foreign keys, but historically faster for read-heavy, write-rarely workloads and full-text search (though InnoDB supports full-text now too). In practice, default to InnoDB unless you have a very specific legacy reason not to.
 
 ### What are triggers, and how do you create one?
-A trigger is SQL that runs automatically before or after an insert, update, or delete on a table. Triggers can enforce database-side rules or maintain audit data, but they introduce implicit behavior that can be difficult to trace. Keep them small, document them, and consider application-level logic when it is easier to test and maintain.
-
-
-Triggers execute in the context of a database statement and can make side effects invisible to application code. They are often appropriate for narrow audit or integrity tasks, but complex business workflows are usually easier to test in application services. Document trigger ordering and include them in schema migrations and disaster-recovery procedures.
-
-```sql
-CREATE TRIGGER set_created_at
-BEFORE INSERT ON articles
-FOR EACH ROW
-SET NEW.created_at = COALESCE(NEW.created_at, CURRENT_TIMESTAMP);
-```
+- **Stored procedure** — a saved, callable block of SQL logic (`CALL my_procedure()`), can take parameters, useful for encapsulating complex multi-statement logic in the DB layer (though in a Laravel app I'd generally keep business logic in the application, not the DB, unless there's a specific performance/atomicity reason).
+- **Trigger** — code that runs automatically on `INSERT`/`UPDATE`/`DELETE` against a table (`BEFORE`/`AFTER`). Useful for audit logging or enforcing invariants at the DB level, but can be a debugging headache since the logic is invisible from application code.
+- **View** — a saved, named query that behaves like a virtual table (`CREATE VIEW active_users AS SELECT * FROM users WHERE status = 'active'`) — good for simplifying repeated complex joins/reporting queries.
 
 ### What is table partitioning in MySQL?
 Partitioning divides one logical table into smaller physical partitions based on a key or range, while queries still address the table normally. It can help manage large time-based datasets and enable partition pruning when predicates match the partition key. It is not a substitute for good indexes, and MySQL imposes constraints on partitioned tables, including unique-key requirements.
@@ -260,29 +185,21 @@ Example flow: `source server (binary log) → replica (relay log) → replica da
 ```
 
 ### How do you handle deadlocks in MySQL?
-A deadlock happens when transactions hold locks the others need, creating a cycle. InnoDB detects the cycle and rolls back one transaction. Keep transactions short, access rows in a consistent order, index update predicates, and retry the rolled-back transaction with bounded backoff when the operation is safe to repeat.
-
-A deadlock is a concurrency outcome rather than necessarily a database defect; the victim transaction must be retried from the beginning. Make retries bounded and idempotent, with short randomized backoff where appropriate. Consistent row-lock ordering and selective indexes reduce deadlock probability, but cannot eliminate it under all concurrent workloads.
-
-```sql
-START TRANSACTION;
-UPDATE inventory SET quantity = quantity - 1 WHERE product_id = 7;
-COMMIT;
-
--- In application code, retry the whole transaction a small, bounded number of times
--- when MySQL reports a deadlock (error 1213).
-```
+Two transactions each hold a lock the other needs, so both wait forever. MySQL/InnoDB detects this automatically and kills one transaction (rolls it back) with an error. Application-side, you catch that specific error and retry the transaction — Laravel's `DB::transaction($callback, $attempts)` accepts a retry count for exactly this reason. Reducing deadlock likelihood: always acquire locks/update rows in a consistent order across your codebase, keep transactions short, and index columns used in `WHERE` clauses of locking queries so you're not locking more rows than necessary.
 
 ### How do you query the second-highest salary?
-If “second highest” means the second distinct salary, use the maximum salary below the overall maximum. This returns `NULL` if fewer than two distinct non-`NULL` salaries exist. Clarify whether the interviewer wants a salary value, one employee row, or all employees tied at that salary; use `DENSE_RANK()` for the last case.
-
-
-Clarify whether ties count as one distinct salary or whether the second row in sorted order is intended. The shown query returns the second distinct value; `LIMIT` with an offset can produce a different answer when salaries tie. Use window functions such as `DENSE_RANK()` when the result must include all employees at that salary.
-
 ```sql
-SELECT MAX(salary) AS second_highest_salary
+SELECT MAX(salary) AS second_highest
 FROM employees
 WHERE salary < (SELECT MAX(salary) FROM employees);
+```
+Or the more general "Nth highest" using window functions (MySQL 8+):
+```sql
+SELECT salary FROM (
+  SELECT salary, DENSE_RANK() OVER (ORDER BY salary DESC) AS rnk
+  FROM employees
+) ranked
+WHERE rnk = 2;
 ```
 
 ### How do you count students in each grade?
@@ -298,37 +215,24 @@ GROUP BY grade;
 ```
 
 ### What are transaction isolation levels in MySQL?
-Isolation determines which changes a transaction can observe while other transactions run. InnoDB supports `READ UNCOMMITTED`, `READ COMMITTED`, `REPEATABLE READ`, and `SERIALIZABLE`; its default is `REPEATABLE READ`. Stronger isolation can prevent more anomalies but may increase locking or retries. Explain the actual business invariant first, then choose an isolation level or explicit locking that preserves it. Test concurrent behavior because a single-session query cannot reveal races.
-
-```sql
-SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-START TRANSACTION;
-SELECT balance FROM accounts WHERE id = 7 FOR UPDATE;
--- Perform related writes, then COMMIT or ROLLBACK.
-```
+`READ UNCOMMITTED` (dirty reads possible) → `READ COMMITTED` (no dirty reads, but non-repeatable reads possible) → `REPEATABLE READ` (MySQL/InnoDB's default — no dirty or non-repeatable reads, but phantom rows possible in theory, though InnoDB's gap locking largely prevents this too) → `SERIALIZABLE` (fully isolated, effectively serial execution, most locking/slowest).
 
 ### How do you find the top three salaries in each department?
-Use `ROW_NUMBER()` when exactly three rows per department are needed, with a stable tiebreaker such as employee ID. Use `DENSE_RANK()` when all employees tied at the third distinct salary should be included. Window functions are available in MySQL 8.0 and later. Filtering the window result requires an outer query because window expressions are evaluated after the `WHERE` clause.
-
 ```sql
-WITH ranked AS (
-  SELECT id, department_id, salary,
-         ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary DESC, id) AS rn
+SELECT name, department_id, salary
+FROM (
+  SELECT name, department_id, salary,
+         ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY salary DESC) AS rn
   FROM employees
-)
-SELECT id, department_id, salary FROM ranked WHERE rn <= 3;
+) ranked
+WHERE rn <= 3;
 ```
 
 ### How do you calculate a running total in MySQL?
-A windowed `SUM()` adds rows in the specified order without collapsing them into one group. Include a unique tiebreaker so rows with the same date produce a deterministic sequence. The explicit `ROWS` frame avoids surprising peer grouping. For an account ledger, partition by account so each account has its own running balance.
-
 ```sql
-SELECT account_id, posted_at, id, amount,
-       SUM(amount) OVER (
-         PARTITION BY account_id ORDER BY posted_at, id
-         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-       ) AS running_total
-FROM ledger_entries;
+SELECT customer_id, order_date, total,
+       SUM(total) OVER (PARTITION BY customer_id ORDER BY order_date) AS running_total
+FROM orders;
 ```
 
 ### How do you find consecutive date ranges with gaps and islands?
@@ -359,4 +263,112 @@ WHERE created_at < :last_created_at
    OR (created_at = :last_created_at AND id < :last_id)
 ORDER BY created_at DESC, id DESC
 LIMIT 20;
+```
+
+### How do DELETE, TRUNCATE, and DROP differ?
+- `DELETE FROM table WHERE ...` — removes rows (optionally filtered), logged row-by-row, can be rolled back in a transaction, triggers fire, auto-increment counter is untouched.
+- `TRUNCATE TABLE table` — removes *all* rows, faster (deallocates and recreates the table internally), resets auto-increment, cannot be rolled back on most storage engines (though InnoDB in a transaction can partially handle it depending on version), doesn't fire row-level triggers.
+- `DROP TABLE table` — removes the entire table structure and data permanently.
+
+### How do WHERE and HAVING differ?
+`WHERE` filters rows *before* grouping/aggregation. `HAVING` filters *after* `GROUP BY`, so it's used to filter on aggregate results (`COUNT`, `SUM`, etc.) which `WHERE` can't reference.
+
+```sql
+SELECT department, COUNT(*) AS emp_count
+FROM employees
+WHERE status = 'active'
+GROUP BY department
+HAVING COUNT(*) > 5;
+```
+
+### How do primary, foreign, and unique keys differ?
+Primary key — uniquely identifies each row, cannot be NULL, one per table (can be composite). Foreign key — a column referencing a primary/unique key in another table, enforcing referential integrity. Unique key — enforces uniqueness like a primary key but allows NULLs (MySQL allows multiple NULLs in a unique column) and a table can have several.
+
+### What are clustered and secondary indexes in InnoDB?
+A clustered index determines the physical order data is stored in the table — in InnoDB, the primary key *is* the clustered index, so the table's actual rows are stored in primary-key order. A non-clustered (secondary) index is a separate structure that stores the indexed column(s) plus a pointer back to the primary key, requiring an extra lookup ("bookmark lookup") to fetch the full row.
+
+### What is the difference between a procedure, trigger, and view?
+- **Stored procedure** — a saved, callable block of SQL logic (`CALL my_procedure()`), can take parameters, useful for encapsulating complex multi-statement logic in the DB layer (though in a Laravel app I'd generally keep business logic in the application, not the DB, unless there's a specific performance/atomicity reason).
+- **Trigger** — code that runs automatically on `INSERT`/`UPDATE`/`DELETE` against a table (`BEFORE`/`AFTER`). Useful for audit logging or enforcing invariants at the DB level, but can be a debugging headache since the logic is invisible from application code.
+- **View** — a saved, named query that behaves like a virtual table (`CREATE VIEW active_users AS SELECT * FROM users WHERE status = 'active'`) — good for simplifying repeated complex joins/reporting queries.
+
+### How do UNION and UNION ALL differ?
+`UNION` combines result sets and removes duplicate rows (implicit `DISTINCT`, extra cost). `UNION ALL` keeps duplicates and is faster since it skips the dedup step — use it whenever you know there won't be duplicates or don't care.
+
+### How do you delete duplicate users while keeping the earliest row?
+```sql
+DELETE u1 FROM users u1
+INNER JOIN users u2
+  ON u1.email = u2.email AND u1.id > u2.id;
+```
+
+### How do you find employees who earn more than their manager?
+```sql
+SELECT e.name AS employee, e.salary, m.name AS manager, m.salary AS manager_salary
+FROM employees e
+JOIN employees m ON e.manager_id = m.id
+WHERE e.salary > m.salary;
+```
+
+### How do you find the latest order for each customer?
+```sql
+SELECT o.*
+FROM orders o
+JOIN (
+  SELECT customer_id, MAX(order_date) AS max_date
+  FROM orders
+  GROUP BY customer_id
+) latest ON o.customer_id = latest.customer_id AND o.order_date = latest.max_date;
+```
+
+### How do you find missing IDs in a sequence?
+```sql
+SELECT (t1.id + 1) AS gap_start
+FROM employees t1
+LEFT JOIN employees t2 ON t1.id + 1 = t2.id
+WHERE t2.id IS NULL
+ORDER BY t1.id;
+```
+
+### Get department-wise employee count, sorted descending.
+```sql
+SELECT d.name AS department, COUNT(e.id) AS employee_count
+FROM departments d
+LEFT JOIN employees e ON e.department_id = d.id
+GROUP BY d.id, d.name
+ORDER BY employee_count DESC;
+```
+
+### Find customers who placed orders in every month of 2024 (a "gaps and islands" style question).
+```sql
+SELECT customer_id
+FROM orders
+WHERE YEAR(order_date) = 2024
+GROUP BY customer_id
+HAVING COUNT(DISTINCT MONTH(order_date)) = 12;
+```
+
+### Find employees with no assigned department (LEFT JOIN with NULL check).
+```sql
+SELECT e.*
+FROM employees e
+LEFT JOIN departments d ON e.department_id = d.id
+WHERE d.id IS NULL;
+```
+
+### Pagination — get rows 21–30 (page 3, 10 per page).
+```sql
+SELECT * FROM employees ORDER BY id LIMIT 10 OFFSET 20;
+```
+Note for interviews: `OFFSET` gets progressively slower on large tables since MySQL still scans and discards the skipped rows. For deep pagination, "keyset pagination" is the better answer:
+```sql
+SELECT * FROM employees WHERE id > 20 ORDER BY id LIMIT 10;
+```
+
+### Update a column based on a join (raise salary 10% for a specific department).
+```sql
+UPDATE employees e
+JOIN departments d ON e.department_id = d.id
+SET e.salary = e.salary * 1.10
+WHERE d.name = 'Engineering';
 ```

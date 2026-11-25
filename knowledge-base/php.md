@@ -1,433 +1,378 @@
 ## PHP
 
 ### What are traits in PHP, and why are they used?
-Traits let unrelated classes reuse a set of methods without inheriting from a common parent. They are useful for small, focused behavior that does not represent an “is-a” relationship. A class can use multiple traits; if methods conflict, resolve the conflict with `insteadof` or rename one with `as`.
-
-
-Traits are a code-reuse mechanism, not a substitute for designing clear object boundaries. They can include methods and properties, but trait state can couple a class to implementation details. If two traits define the same method, PHP requires an explicit conflict resolution; a small interface plus composition may be clearer when behavior needs to vary.
+A trait is a mechanism for code reuse in single-inheritance languages like PHP. A class can only extend one parent, but it can `use` multiple traits — letting you share methods across unrelated class hierarchies without duplicating code.
 
 ```php
-trait HasTimestamps
-{
-    protected ?DateTimeImmutable $updatedAt = null;
-
-    public function touch(): void
-    {
-        $this->updatedAt = new DateTimeImmutable();
+trait Loggable {
+    public function log(string $message): void {
+        echo static::class . ": " . $message;
     }
 }
 
-final class Article
-{
-    use HasTimestamps;
+trait Cacheable {
+    public function cacheKey(): string {
+        return static::class . ':' . $this->id;
+    }
+}
+
+class Order {
+    use Loggable, Cacheable;
+    public int $id = 1;
 }
 ```
+
+Purpose: horizontal code reuse. If two unrelated classes need the same behavior (e.g., `HasUuid`, `Loggable`, `Cacheable`) but don't share a natural inheritance relationship, a trait avoids copy-pasting the same methods into both, and avoids forcing an artificial base class. Laravel itself relies heavily on this pattern (`SoftDeletes`, `Notifiable`, `HasFactory`).
+
+Notes: if two traits used in the same class define a method with the same name, PHP throws a fatal error unless you resolve it with `insteadof`/`as` in the class body.
 
 ### What are the SOLID principles?
-SOLID is a set of five object-oriented design guidelines:
+- **S — Single Responsibility**: a class should have one reason to change. A `User` model shouldn't also handle sending emails and generating PDFs — pull those into separate services.
+- **O — Open/Closed**: classes should be open for extension, closed for modification. Instead of adding `if ($type === 'paypal')` branches into a `PaymentProcessor`, define a `PaymentGatewayInterface` and add new gateway classes.
+- **L — Liskov Substitution**: a subclass should be usable anywhere its parent is expected without breaking behavior. If `Rectangle` has `setWidth`/`setHeight` and `Square extends Rectangle` overrides them to keep both sides equal, code that assumes independent width/height breaks — a classic LSP violation.
+- **I — Interface Segregation**: prefer several small, specific interfaces over one bloated one. Don't force a class to implement methods it doesn't need (e.g., don't make every `Notifiable` implement `sendSms()` if only some channels support SMS).
+- **D — Dependency Inversion**: depend on abstractions, not concrete classes. A service should type-hint `PaymentGatewayInterface`, not `StripeGateway`, so the concrete implementation can be swapped (and the container resolves the binding).
 
-- **Single Responsibility:** give a class one cohesive reason to change.
-- **Open/Closed:** extend behavior without repeatedly modifying stable code.
-- **Liskov Substitution:** subtypes should work wherever their base type is expected.
-- **Interface Segregation:** prefer focused interfaces over large interfaces clients do not need.
-- **Dependency Inversion:** high-level policy depends on abstractions, not concrete details.
-
-These are design tools, not rules that require one class per method.
-
-SOLID is most useful when it helps isolate changes and makes behavior easier to test; applying every principle mechanically can create unnecessary classes and indirection. For example, dependency inversion lets a high-level checkout workflow depend on a payment contract so a real gateway and test double can both be supplied.
-
-```php
-interface PaymentGateway { public function charge(int $cents): void; }
-
-final class Checkout
-{
-    public function __construct(private PaymentGateway $gateway) {}
-
-    public function pay(int $cents): void
-    {
-        $this->gateway->charge($cents);
-    }
-}
-```
+This maps directly onto how Laravel's container/interface binding is meant to be used — DIP is essentially what `$this->app->bind(Interface::class, Concrete::class)` exists for.
 
 ### What is Composer, and how does it help PHP development?
-Composer is PHP’s dependency manager. It records package constraints in `composer.json`, resolves compatible versions, installs packages into `vendor/`, and generates an autoloader. Commit `composer.lock` for applications so deployments install the same resolved versions.
+Composer is PHP's dependency manager. It reads `composer.json`, resolves version constraints across all required packages, downloads them into `vendor/`, and generates an autoload map (`vendor/autoload.php`) so classes are available via PSR-4 autoloading without manual `require` statements.
 
-
-Composer also supports PSR-4 autoloading and script commands, making it the standard foundation for modern PHP projects. Add only maintained packages that fit the project’s PHP version and licensing needs. In applications, commit the lock file and use `composer install` in CI and deployment for reproducible dependencies.
-
-```bash
-composer require monolog/monolog
-composer install
-```
+Key things it provides:
+- **Dependency resolution** — handles version constraints (`^`, `~`, exact) and conflicts between packages' own sub-dependencies.
+- **Autoloading** — PSR-4/PSR-0 class-map generation; `composer dump-autoload` regenerates it, `-o` optimizes it into a flat classmap for production.
+- **`composer.lock`** — pins exact resolved versions so every environment (dev, CI, production) installs identical dependency versions, not just "compatible" ones.
+- **Scripts** — hooks like `post-install-cmd` to run tasks automatically (e.g., `php artisan package:discover`).
+- **Package publishing** — via Packagist, letting you require any public package by name, or private packages via VCS/path repositories.
 
 ### How do PDO and MySQLi differ?
-PDO provides one consistent database API for several drivers, while MySQLi is specific to MySQL. Both support prepared statements and transactions. Use prepared statements for values in either API; placeholders cannot safely substitute table or column names, so whitelist dynamic identifiers.
+Both are PHP extensions for talking to a database.
 
+| | PDO | MySQLi |
+|---|---|---|
+| Database support | 12+ drivers (MySQL, Postgres, SQLite, SQL Server...) | MySQL/MariaDB only |
+| API style | OOP only | OOP and procedural |
+| Named parameters | Yes (`:name`) | No, positional `?` only |
+| Prepared statements | Yes | Yes |
 
-PDO is a good fit when an application may support multiple database drivers; MySQLi offers MySQL-specific features such as certain server capabilities. Both support prepared statements, but placeholders represent values only, not SQL identifiers. Validate and whitelist a requested sort column before interpolating it into SQL.
-
-```php
-$stmt = $pdo->prepare('SELECT id, name FROM users WHERE email = :email');
-$stmt->execute(['email' => $email]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-```
+PDO is the better default for portability and consistency (Laravel's own DB layer is built on PDO under the hood). MySQLi is fine if you're MySQL-only and want the procedural style, or need MySQL-specific features not exposed by PDO. Both support prepared statements, which is what actually protects against SQL injection — the driver choice itself isn't a security decision.
 
 ### What is a cookie in PHP?
-A cookie is a small value a server asks the browser to store and send with later requests. Set it before sending response output, give it an appropriate lifetime, and use `Secure`, `HttpOnly`, and `SameSite` options where suitable. Do not store secrets or trusted authorization decisions directly in a client-editable cookie.
-
-
-Cookies are sent with matching requests, so keep them small and avoid putting sensitive information directly into them. For authentication, use a securely configured session identifier or a signed, carefully designed token, and rotate credentials when privilege changes. `SameSite` helps reduce some cross-site request risks but does not replace CSRF protection.
-
-```php
-setcookie('theme', 'dark', [
-    'expires' => time() + 86400 * 30,
-    'path' => '/',
-    'secure' => true,
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-```
+A small piece of data stored on the client's browser, sent back to the server with every subsequent request to that domain. Set with `setcookie($name, $value, $expire, $path, $domain, $secure, $httponly)`, read via `$_COOKIE`. Common uses: remembering login state (usually a signed/encrypted token, not raw credentials), preferences, tracking. In Laravel, cookies are automatically encrypted/signed by the `EncryptCookies` middleware unless explicitly excluded, and `Cookie::queue()` is the idiomatic way to set one within the framework.
 
 ### How do you handle errors in PHP?
-PHP has exceptions and engine errors; both implement `Throwable` in current PHP versions. Catch exceptions where you can recover or add context, log unexpected failures centrally, and show users a safe message rather than internal details. Configure production to log errors and disable display of stack traces.
-
-
-Distinguish expected validation or domain failures from unexpected infrastructure errors, and convert them into appropriate response codes at the application boundary. Logs should include enough context to diagnose a failure while excluding passwords, tokens, and other secrets. In production, configure error reporting and display settings separately.
+Two separate mechanisms:
+- **Errors** (`E_WARNING`, `E_NOTICE`, fatal errors) — traditionally handled via `set_error_handler()`, and since PHP 7, most fatal errors are now `Error` objects that can be caught like exceptions (`Error` implements `Throwable`, same interface as `Exception`).
+- **Exceptions** — thrown deliberately with `throw new Exception(...)`, caught with `try/catch`, optionally with `finally` for cleanup that must run regardless of outcome.
 
 ```php
 try {
-    $result = performOperation();
-} catch (InvalidArgumentException $exception) {
-    // Handle a known invalid input.
-} catch (Throwable $exception) {
-    error_log((string) $exception);
-    // Return a generic failure response.
+    $result = $service->process($data);
+} catch (ValidationException $e) {
+    // handle a specific, expected failure
+} catch (Throwable $e) {
+    // catch-all for anything else, including PHP Errors
+    report($e);
+} finally {
+    // always runs — release a lock, close a connection, etc.
 }
 ```
+
+In Laravel specifically, uncaught exceptions flow through the `Handler` (or `bootstrap/app.php`'s `withExceptions()` in Laravel 11+), where you can render custom responses per exception type and report to logging/error tracking.
 
 ### What do public, protected, and private mean in PHP?
-`public` members can be accessed from anywhere; `protected` members are accessible in the declaring class and its subclasses; `private` members are accessible only inside the class that declares them. Prefer the narrowest visibility that supports the class’s intended API.
-
-Visibility controls access to members, not whether data is automatically validated. Keep internal state private and expose intent-revealing methods that preserve invariants. Protected members are part of the subclass extension surface, so changing them can break child classes even when they are not public to ordinary callers.
+- **public** — accessible from anywhere: inside the class, subclasses, and outside code.
+- **protected** — accessible within the class and any subclass, but not from outside code.
+- **private** — accessible only within the exact class it's declared in, not even subclasses.
 
 ```php
-class Account
-{
-    public string $owner;
-    protected int $balance = 0;
-    private string $pin;
+class Base {
+    public $a = 1;      // accessible everywhere
+    protected $b = 2;   // accessible in Base and Child
+    private $c = 3;     // accessible only in Base
+}
+
+class Child extends Base {
+    public function show() {
+        echo $this->a; // ok
+        echo $this->b; // ok
+        echo $this->c; // Error — undefined/inaccessible
+    }
 }
 ```
+Default in PHP (if omitted) is `public`, but best practice is to always declare visibility explicitly.
 
 ### What inheritance does PHP support?
-A PHP class can extend one parent class, so class inheritance is single inheritance. That parent can itself extend another class, creating multilevel or hierarchical inheritance. A class can implement multiple interfaces, and traits can share implementation across classes. Composition is often preferable when the relationship is not truly “is-a.”
-
-Inheritance is useful for substitutable specializations, but deep hierarchies make behavior and constructor requirements harder to follow. PHP permits one direct parent class while allowing multiple interfaces and traits. Prefer composition when a class merely needs another object’s capability rather than being a true subtype.
+Inheritance lets a class (`extends`) reuse and override the properties/methods of a parent class. PHP supports **single inheritance only** — a class can extend exactly one parent (unlike traits, which can be multiple). Multi-level inheritance is allowed (A → B → C), and interfaces can be multiply implemented, which is how PHP works around not having multiple class inheritance.
 
 ```php
-interface JsonSerializableRecord { public function toArray(): array; }
-
-class BaseRecord {}
-class User extends BaseRecord implements JsonSerializableRecord
-{
-    public function toArray(): array { return []; }
+class Animal {
+    public function speak(): string { return "..."; }
+}
+class Dog extends Animal {
+    public function speak(): string { return "Woof"; }
 }
 ```
 
 ### What is polymorphism in PHP?
-Polymorphism lets code use one shared type while different implementations provide different behavior. In PHP, interfaces and abstract classes commonly define that contract; the caller can invoke the same method without knowing the concrete class.
-
-
-Polymorphism reduces branching in callers because each implementation handles its own behavior behind a shared contract. It works well with dependency injection and test doubles, but the contract should express stable behavior rather than every detail of one implementation. Type declarations make the expected contract visible and help static analysis.
+The ability for different classes to be treated through a common interface, with each providing its own behavior for the same method call. Achieved via:
+1. **Method overriding** (inheritance) — a subclass redefines a parent's method.
+2. **Interfaces** — unrelated classes implement the same interface and can be used interchangeably wherever that interface is type-hinted.
 
 ```php
-interface Notifier { public function send(string $message): void; }
+interface PaymentGateway {
+    public function charge(int $amountCents): bool;
+}
+class StripeGateway implements PaymentGateway {
+    public function charge(int $amountCents): bool { /* ... */ return true; }
+}
+class PaypalGateway implements PaymentGateway {
+    public function charge(int $amountCents): bool { /* ... */ return true; }
+}
 
-function notifyUser(Notifier $notifier): void
-{
-    $notifier->send('Your report is ready.');
+function processPayment(PaymentGateway $gateway, int $amount) {
+    return $gateway->charge($amount); // doesn't care which implementation
 }
 ```
 
 ### What is the difference between method overriding and overloading in PHP?
-Overriding replaces an inherited method implementation in a subclass while keeping a compatible signature. PHP does not support traditional compile-time method overloading, where several methods share a name but differ only by parameter lists. Dynamic calls can be intercepted with magic methods such as `__call`, though explicit methods or variadic parameters are usually clearer.
+- **Overriding** — a subclass redefines a method that already exists in its parent, with the same signature. Fully supported natively.
+- **Overloading** (in the classic sense — multiple methods with the same name but different parameter signatures/types) — **not supported in PHP**. PHP is dynamically typed, so there's no way to distinguish calls by parameter type/count at compile time the way Java/C# does.
 
-A child override must remain compatible with the parent method’s visibility and parameter/return contract under PHP’s signature rules. PHP does not select overloads by argument signature like some languages. When optional behaviors differ significantly, use named methods or separate value objects instead of a large conditional method.
-
+PHP achieves overloading-like behavior via **magic methods**:
 ```php
-class BaseLogger
-{
-    public function log(string $message): void {}
-}
-
-class FileLogger extends BaseLogger
-{
-    public function log(string $message): void
-    {
-        file_put_contents("app.log", $message . PHP_EOL, FILE_APPEND);
+class Calculator {
+    public function __call($name, $arguments) {
+        if ($name === 'add') {
+            return array_sum($arguments); // works for 2, 3, N args
+        }
     }
 }
+$calc = new Calculator();
+echo $calc->add(1, 2);       // 3
+echo $calc->add(1, 2, 3, 4); // 10
 ```
+`__call()` handles instance method calls to undefined/inaccessible methods; `__callStatic()` does the same for static calls; `__get`/`__set` do the equivalent for property access.
 
 ### What is an abstract class in PHP?
-An abstract class cannot be instantiated directly. It can contain shared implementation and state, as well as abstract methods that concrete subclasses must implement. Use it when related classes share a base concept and some common behavior.
-
-
-Abstract classes are useful when subclasses share implementation and state while still requiring selected methods. Since a class can extend only one parent, using an abstract base consumes that inheritance slot. Keep base classes focused and avoid forcing unrelated classes into the same hierarchy just to reuse a helper.
+A class that cannot be instantiated directly and is meant to be extended. It can define both concrete methods (shared implementation) and abstract methods (no body — subclasses *must* implement them).
 
 ```php
-abstract class Report
-{
-    abstract public function render(): string;
+abstract class Shape {
+    abstract public function area(): float; // must be implemented by subclasses
 
-    public function filename(): string
-    {
-        return 'report.txt';
+    public function describe(): string {     // shared, concrete
+        return "Area: " . $this->area();
     }
+}
+class Circle extends Shape {
+    public function __construct(private float $radius) {}
+    public function area(): float { return M_PI * $this->radius ** 2; }
 }
 ```
 
 ### What is an interface in PHP?
-An interface defines a contract that implementing classes must fulfill. Interfaces enable unrelated classes to be used through the same type and support multiple interface implementation. Keep an interface focused on behavior its consumers actually need.
-
-An interface allows callers to depend on a capability rather than a specific class, which supports substitution in tests and alternate implementations. Interface changes can affect every implementing class, so keep contracts small and stable. Use return and parameter types to make behavior clear, and document semantics that the type system cannot express.
+A contract that defines method signatures (no implementation, no properties with values, though PHP 8.3+ allows constants) that implementing classes must fulfill. A class can implement multiple interfaces (`implements A, B`), which is PHP's way of supporting multiple "is-able-to" relationships without multiple inheritance.
 
 ```php
-interface CacheStore
-{
-    public function get(string $key): mixed;
-    public function put(string $key, mixed $value): void;
+interface Exportable {
+    public function toArray(): array;
 }
-
-final class ArrayCache implements CacheStore
-{
-    private array $items = [];
-    public function get(string $key): mixed { return $this->items[$key] ?? null; }
-    public function put(string $key, mixed $value): void { $this->items[$key] = $value; }
+interface Cacheable {
+    public function cacheKey(): string;
+}
+class Report implements Exportable, Cacheable {
+    public function toArray(): array { return []; }
+    public function cacheKey(): string { return 'report:1'; }
 }
 ```
 
 ### How do abstract classes and interfaces differ?
-An abstract class can hold instance state, constructors, and shared method implementations; a class can extend only one class. An interface describes a contract without instance state or constructor implementation; a class can implement several interfaces. Use an interface for capability boundaries and an abstract class when subclasses genuinely share a base implementation.
+| | Abstract Class | Interface |
+|---|---|---|
+| Instantiable | No | No |
+| Implementation | Can have concrete methods + abstract methods | Traditionally none (PHP 8+ allows constants only, no method bodies) |
+| Properties | Can have typed properties with default values | No properties |
+| Inheritance | Single — a class extends only one | Multiple — a class can implement many |
+| Use case | "is-a" relationship with shared base behavior | "can-do" contract across unrelated classes |
 
-A class can implement multiple interfaces but extend only one class. An interface is typically the better boundary between independent layers, while an abstract class can share protected helpers or invariant state among closely related implementations. Avoid creating an abstract class solely to hold unrelated static utility methods.
-
-```php
-interface Exportable { public function export(): string; }
-
-abstract class ReportBase
-{
-    public function generatedAt(): DateTimeImmutable { return new DateTimeImmutable(); }
-}
-
-final class CsvReport extends ReportBase implements Exportable
-{
-    public function export(): string { return "id,name\n1,Ada"; }
-}
-```
+Rule of thumb: use an abstract class when subclasses share real implementation and state; use an interface when you just need to guarantee a class supports certain behavior, regardless of its position in a hierarchy.
 
 ### What are static properties and methods in PHP?
-Static members belong to the class rather than an individual object and are accessed with `ClassName::$property` or `ClassName::method()`. Static methods have no `$this`, so they cannot access instance members. They are useful for stateless helpers or class-level state, but can make dependencies and tests harder to manage.
-
-Static methods are called without constructing an object, so they cannot use instance state through `$this`. Static state is shared for the lifetime of the PHP process, which can matter in long-running workers. Use statics for behavior that is genuinely class-level, and use objects for request-scoped or replaceable dependencies.
+Static members belong to the class itself, not to any instance — shared across all instances, accessed via `ClassName::$property` / `ClassName::method()` without needing `new`.
 
 ```php
-final class Slug
-{
-    public static function from(string $text): string
-    {
-        return strtolower(str_replace(" ", "-", trim($text)));
+class Counter {
+    public static int $count = 0;
+    public static function increment(): void {
+        static::$count++;
     }
 }
-
-$slug = Slug::from("Hello World");
+Counter::increment();
+Counter::increment();
+echo Counter::$count; // 2
 ```
 
 ### What are the benefits and drawbacks of static members?
-Static members are convenient when behavior or data truly belongs to the class and does not depend on object state. Excessive static state creates hidden global dependencies, complicates parallel tests, and makes substitution difficult. Prefer injected services for dependencies that need configuration, lifecycle management, or mocking.
-
-Static helpers are easy to call, but static service locators or mutable registries hide dependencies and make tests order-sensitive. A pure static function with explicit inputs can be simple and predictable. If behavior needs configuration, state, I/O, or substitution, constructor injection generally makes those dependencies clearer.
-
-```php
-final class TaxRate
-{
-    public static function percentage(): float { return 0.2; }
-}
-
-// For configurable behavior, inject a service instead of global static state.
-final class InvoiceTotal
-{
-    public function __construct(private TaxCalculator $tax) {}
-}
-```
+Benefits — no need to instantiate for utility/helper functionality, shared state across the whole app lifecycle (e.g., a counter, a registry), slightly faster since no object allocation. Drawbacks — hard to mock/test (can't easily swap implementations via DI), introduces global mutable state which causes hidden coupling and race conditions in concurrent contexts (a real concern under Octane, where static state persists across requests), and breaks polymorphism in some cases since static calls aren't part of an object's dynamic dispatch the same way instance methods are (mitigated partly by late static binding via `static::`).
 
 ### Does PHP support method overloading?
-PHP does not choose between multiple methods with the same name based on parameter types or count. The `__call` and `__callStatic` magic methods can intercept calls to missing or inaccessible methods, but that is dynamic dispatch rather than language-level overloading. Validate the requested method name and arguments when using magic dispatch. For ordinary optional inputs, use defaults, union types, or variadic parameters instead.
+- **Overriding** — a subclass redefines a method that already exists in its parent, with the same signature. Fully supported natively.
+- **Overloading** (in the classic sense — multiple methods with the same name but different parameter signatures/types) — **not supported in PHP**. PHP is dynamically typed, so there's no way to distinguish calls by parameter type/count at compile time the way Java/C# does.
 
-PHP does support function overloading in a different sense for extensions, but userland classes do not have traditional signature-based overload resolution. Magic methods like `__call()` can intercept missing or inaccessible method calls, yet they weaken discoverability and static analysis. Prefer explicit methods, optional parameters, or distinct request objects.
-
+PHP achieves overloading-like behavior via **magic methods**:
 ```php
-final class Search
-{
-    public function find(string $term, int $limit = 10): array
-    {
-        return [];
+class Calculator {
+    public function __call($name, $arguments) {
+        if ($name === 'add') {
+            return array_sum($arguments); // works for 2, 3, N args
+        }
     }
 }
-
-$results = (new Search())->find("laravel", limit: 20);
+$calc = new Calculator();
+echo $calc->add(1, 2);       // 3
+echo $calc->add(1, 2, 3, 4); // 10
 ```
+`__call()` handles instance method calls to undefined/inaccessible methods; `__callStatic()` does the same for static calls; `__get`/`__set` do the equivalent for property access.
 
 ### What are namespaces in PHP?
-Namespaces group class, function, and constant names and prevent collisions between libraries. They also support PSR-4 autoloading, so a class can be loaded from a predictable file path instead of manual `require` calls.
-
-
-A namespace declaration must appear at the start of a PHP file, and imported aliases with `use` make long names easier to read. PSR-4 convention aligns namespace prefixes with directory paths, so consistent casing is important for cross-platform deployments. Namespaces organize symbols but do not provide runtime security or access control.
+Namespaces organize code into logical groups and prevent class-name collisions — critical once you're pulling in dozens of third-party packages via Composer that might otherwise define a class also called `Collection` or `Request`.
 
 ```php
-namespace App\Services;
+namespace App\Services\Payment;
 
-use App\Contracts\PaymentGateway;
-
-final class CheckoutService
-{
-    public function __construct(private PaymentGateway $gateway) {}
-}
+class Gateway { /* ... */ }
 ```
+```php
+use App\Services\Payment\Gateway as PaymentGateway;
+use Illuminate\Http\Request; // no collision with a `Request` in your own app namespace
+```
+They're also the backbone of PSR-4 autoloading — Composer maps namespace prefixes to directories (`"App\\": "app/"`), so the class location is inferable directly from its fully-qualified name.
 
 ### How does exception handling work in PHP, and what exception types are available?
-Use `try` to run code that may fail, `catch` to handle a specific failure, and `finally` for cleanup that must always run. Built-in exceptions include `InvalidArgumentException`, `RuntimeException`, and `PDOException`; applications can define their own by extending `Exception`. PHP engine errors use the separate `Error` hierarchy, and both errors and exceptions implement `Throwable`.
+PHP has a built-in exception hierarchy under `Throwable` (implemented by both `Exception` and `Error`). Common built-ins:
 
+- `Exception` — base class for user-land exceptions
+- `ErrorException` — wraps a traditional PHP error/warning/notice as a catchable exception
+- `InvalidArgumentException` — invalid argument passed to a function
+- `RuntimeException` — error only detectable at runtime
+- `LogicException` — a programming logic error (bad usage of the API)
+- `DomainException` — a value outside the defined domain of acceptable values
+- `LengthException` — value's length is invalid
+- `OutOfBoundsException` / `OutOfRangeException` — invalid index/key access
+- `OverflowException` / `UnderflowException` — operations exceeding container capacity
 
-Catch the narrowest exception you can handle meaningfully; catching `Throwable` is useful at a process or request boundary for logging and cleanup, but swallowing it can hide serious failures. `finally` is appropriate for cleanup that must run on success or failure. Preserve the original exception as a previous exception when wrapping it.
-
+**Custom exceptions** extend the base class to carry domain-specific context and behavior:
 ```php
-try {
-    $connection->beginTransaction();
-    // Perform database work.
-    $connection->commit();
-} catch (Throwable $exception) {
-    if ($connection->inTransaction()) {
-        $connection->rollBack();
+class InsufficientStockException extends Exception {
+    public function __construct(private string $sku, int $requested, int $available) {
+        parent::__construct("Insufficient stock for {$sku}: requested {$requested}, available {$available}");
     }
-    throw $exception;
+    public function sku(): string { return $this->sku; }
+}
+
+try {
+    throw new InsufficientStockException('SKU-123', 10, 3);
+} catch (InsufficientStockException $e) {
+    Log::warning($e->getMessage(), ['sku' => $e->sku()]);
 }
 ```
+
+**Key `Exception`/`Throwable` methods:**
+- `getMessage()` — the exception message
+- `getCode()` — an optional numeric code
+- `getFile()` / `getLine()` — where it was thrown
+- `getTrace()` — stack trace as an array
+- `getTraceAsString()` — stack trace as a formatted string
+- `getPrevious()` — the previous exception, if this one wraps/chains another
 
 ### Which design patterns are commonly used in PHP?
-Useful patterns include **Factory** for object creation, **Strategy** for interchangeable behavior, **Adapter** for a consistent interface around a different API, **Observer** for event subscribers, and **Decorator** for wrapping behavior. MVC separates request handling, domain logic, and presentation in web applications. Choose a pattern to solve a real change or coupling problem rather than adding ceremony.
+- **Singleton** — ensures a class has only one instance, globally accessible. Laravel's container `singleton()` binding gives you this without writing the boilerplate yourself.
+  ```php
+  class Config {
+      private static ?self $instance = null;
+      private function __construct() {}
+      public static function getInstance(): self {
+          return self::$instance ??= new self();
+      }
+  }
+  ```
 
-Patterns are shared vocabulary for recurring design problems, not a checklist for every application. A strategy is useful when algorithms can vary; an adapter helps integrate a third-party API; a decorator adds behavior while preserving an interface. Favor the simplest design that lets the code change safely.
+- **Factory** — centralizes object creation logic, so callers don't need to know the concrete class being instantiated.
+  ```php
+  class NotificationFactory {
+      public static function make(string $type): NotificationChannel {
+          return match ($type) {
+              'email' => new EmailChannel(),
+              'sms'   => new SmsChannel(),
+          };
+      }
+  }
+  ```
 
-```php
-interface Formatter { public function format(array $data): string; }
+- **Observer** — one object (subject) notifies a list of dependents (observers) when its state changes, without being tightly coupled to them. Laravel's Event/Listener system *is* this pattern, framework-provided.
 
-final class JsonFormatter implements Formatter
-{
-    public function format(array $data): string
-    {
-        return json_encode($data, JSON_THROW_ON_ERROR);
-    }
-}
-```
+- **Strategy** — encapsulates interchangeable algorithms behind a common interface, selected at runtime. E.g., the `PaymentGateway` interface example above — swap the strategy without changing the calling code.
+
+- **Adapter** — wraps an incompatible interface to make it compatible with what your code expects. E.g., wrapping a third-party SMS SDK behind your own `SmsSenderInterface` so the rest of the app doesn't depend on that vendor's API shape directly.
+
+- **Decorator** — wraps an object to add behavior without altering its class. E.g., wrapping a `Repository` with a `CachingRepositoryDecorator` that checks cache before delegating to the real repository.
+
+- **MVC** — Model (data/business rules), View (presentation), Controller (orchestrates request → model → view). Laravel's whole structure is built around this, though in practice "fat controllers" get avoided by pushing logic into services/actions and keeping controllers thin.
 
 ### What is the difference between self::class and static::class?
-`self::class` resolves to the class where the code is declared. `static::class` uses late static binding and resolves to the runtime class that called the method, which matters in inherited code.
-
-
-The difference comes from late static binding: `self` refers to the class where the method was defined, while `static` follows the runtime called class. This matters in inherited factories and registries that need to instantiate or report the subclass. `parent::` is used to reference parent implementations.
+`self::` resolves to the class where the code is *written* (compile-time binding). `static::` uses **late static binding** — it resolves to the class that was actually *called* at runtime, which matters when a method is inherited and the parent calls a static method that a child has overridden.
 
 ```php
-class BaseType
-{
-    public static function names(): array
-    {
-        return [self::class, static::class];
+class ParentClass {
+    public static function create(): static {
+        return new static(); // late static binding
     }
+    public function whoSelf(): string { return self::class; }
+    public function whoStatic(): string { return static::class; }
 }
+class ChildClass extends ParentClass {}
 
-class ChildType extends BaseType {}
-
-// BaseType::names() returns [BaseType::class, BaseType::class].
-// ChildType::names() returns [BaseType::class, ChildType::class].
+$child = ChildClass::create();
+echo get_class($child);      // ChildClass — static:: respected the actual called class
+echo $child->whoSelf();      // ParentClass — self:: is fixed to where it's declared
+echo $child->whoStatic();    // ChildClass — static:: resolves to the runtime class
 ```
+This is exactly why Eloquent's `Model::create()`-style methods return the correct subclass — they use `static::` internally, not `self::`.
 
 ### How can you count each character in “SOFTWARE ENGINEER” with PHP?
-Normalize the input, remove spaces if only letters should be counted, then use `array_count_values` on its characters. Sorting the result makes the output predictable.
-
-
-Decide whether spaces and letter case should be included before counting. For UTF-8 text, byte-oriented functions such as `str_split()` may split multibyte characters incorrectly; use `mb_*` functions or Unicode-aware iteration when inputs are not guaranteed to be ASCII. Normalize case if the count should be case-insensitive.
-
 ```php
-$word = 'SOFTWARE ENGINEER';
-$letters = str_split(str_replace(' ', '', strtoupper($word)));
-$counts = array_count_values($letters);
-ksort($counts);
-
-foreach ($counts as $letter => $count) {
-    echo "$letter: $count\n";
-}
+$word = "SOFTWARE ENGINEER";
+$counts = array_count_values(str_split($word));
+print_r($counts);
+// prints frequency of each character including the space
+```
+If spaces should be ignored:
+```php
+$counts = array_count_values(str_split(str_replace(' ', '', $word)));
 ```
 
 ### How do you find the maximum value in a PHP array in one line?
-Use PHP’s `max` function. For the array shown in the sheet, the maximum is `45`.
-
-
-`max()` works for comparable values and returns the greatest value, but an empty array needs separate handling because there is no meaningful maximum. Ensure the array contains consistent types; PHP comparison rules can be surprising for mixed strings and numbers. Validate user-supplied values before applying the calculation.
-
 ```php
-$maximum = max([5, 9, 2, 3, 6, 45]);
+$max = max([5, 9, 2, 3, 6, 45]); // 45
 ```
 
 ### How do you version a REST API?
-Common approaches include a version in the URL (`/api/v1/...`), a vendor media type in the `Accept` header, or a custom version header. URL versioning is easy to understand and route; header versioning keeps the resource path stable. Keep old versions during a documented migration window and avoid breaking existing clients without notice.
-
-Path versioning is easy for clients and infrastructure to inspect, while header or media-type versioning keeps URLs stable but is less visible. Whichever strategy you choose, version only breaking contracts, keep behavior consistent within a version, and publish a deprecation and migration policy. Avoid duplicating endpoints when additive compatible changes are sufficient.
-
-```php
-Route::prefix("api/v1")->group(function () {
-    Route::get("/users", [UserController::class, "index"]);
-});
-```
+Most common in Laravel: URI-based versioning (`/api/v1/users`), implemented via route prefixes/groups pointing to versioned controller namespaces. Alternative: a custom `Accept` header (`Accept: application/vnd.myapp.v2+json`) resolved by middleware — more "RESTfully pure" but harder for clients to work with/debug (can't just hit the URL in a browser or curl without extra headers). I default to URI versioning for its simplicity and cacheability, reserving header versioning for cases where clients need very fine-grained control.
 
 ### What is throttling in an API?
-Throttling limits how frequently a client can make requests, usually per user, API key, or IP address. It protects service capacity and reduces abuse. A rate limit is the policy; throttling is the enforcement behavior, such as returning HTTP `429 Too Many Requests` with a `Retry-After` value.
-
-A rate limit typically identifies a client or user, defines a time window, and returns HTTP 429 when the quota is exceeded. Include a retry hint such as `Retry-After` when the policy can provide one. Use shared storage in multi-instance deployments so each server enforces the same limit.
-
-```php
-Route::middleware('throttle:60,1')->get('/api/items', [ItemController::class, 'index']);
-```
+Limiting how many requests a client can make in a given time window, to protect the API from abuse/overload and to enforce fair usage across clients. In Laravel, the `throttle:60,1` middleware (60 requests per minute) uses the cache (ideally Redis in production for accuracy across multiple servers) to track request counts per key (IP, user id, API token).
 
 ### How would you implement rate limiting in a PHP REST API?
-Use a shared store such as Redis so limits work across application servers. Choose a key per authenticated user or API key, apply a fixed-window, sliding-window, or token-bucket policy atomically, and return `429` plus limit/reset headers when the quota is exhausted. Framework middleware can centralize the check and response.
-
-
-A production limiter should use atomic shared storage such as Redis or a framework cache driver; in-memory counters reset on process restart and differ across instances. Choose the key carefully, since IP-based limits can group many users behind a proxy. Return a consistent 429 response and test boundary and reset behavior.
-
+Using Laravel's `RateLimiter` facade with named limiters registered in a service provider:
 ```php
-$key = 'rate-limit:' . $apiKey;
-$count = $redis->incr($key);
-if ($count === 1) {
-    $redis->expire($key, 60);
-}
-if ($count > 100) {
-    http_response_code(429);
-    header('Retry-After: ' . $redis->ttl($key));
-    exit;
-}
+RateLimiter::for('api', function (Request $request) {
+    return $request->user()
+        ? Limit::perMinute(120)->by($request->user()->id)
+        : Limit::perMinute(20)->by($request->ip());
+});
 ```
+Then apply via `->middleware('throttle:api')` on routes. Under the hood it's a sliding/fixed window counter in cache, incrementing per key and comparing against the limit, returning `429 Too Many Requests` with a `Retry-After` header once exceeded. For custom (non-Laravel) implementations, the same idea works with Redis `INCR` + `EXPIRE` on a key like `throttle:{client_id}:{minute_bucket}`.
 
 ### Which HTTP methods can a PHP REST API handle?
-HTTP methods include `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS`. PHP can receive any of them; the web server passes the method in `$_SERVER['REQUEST_METHOD']`. `$_POST` is populated for form-encoded POST data, so JSON or other request bodies for PUT/PATCH/DELETE are commonly read from `php://input`. Frameworks often provide method-override support for HTML forms.
-
-Methods communicate intended semantics: GET retrieves data, POST creates or triggers processing, PUT replaces a resource, PATCH applies a partial change, and DELETE removes it. GET should be safe and not change server state; PUT and DELETE are intended to be idempotent. The web server and framework must also be configured to route the methods.
-
-```php
-Route::get('/users', [UserController::class, 'index']);
-Route::post('/users', [UserController::class, 'store']);
-Route::put('/users/{user}', [UserController::class, 'update']);
-Route::patch('/users/{user}', [UserController::class, 'update']);
-Route::delete('/users/{user}', [UserController::class, 'destroy']);
-```
+The REST convention: `GET` (read), `POST` (create), `PUT` (full replace/update), `PATCH` (partial update), `DELETE` (remove). PHP itself doesn't restrict HTTP methods — it's the web server/framework routing that decides which are recognized. HTML forms only natively support `GET`/`POST`, so Laravel simulates `PUT`/`PATCH`/`DELETE` for HTML forms via a hidden `_method` field (`@method('PUT')` in Blade) which the `MethodOverride` middleware reads and treats as the real verb — but for actual API clients (fetch/axios/Postman/mobile apps) you send the real `PUT`/`PATCH`/`DELETE` HTTP method directly, no simulation needed.
