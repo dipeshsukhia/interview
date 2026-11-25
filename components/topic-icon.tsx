@@ -2,6 +2,7 @@ const paths: Record<string, React.ReactNode> = {
   "all-questions": <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
   laravel: <><path d="M4 4v12l8 5 8-5V4l-8 5-8-5Z" /><path d="M4 4v9l8 5 8-5V4M12 9v12" /></>,
   python: <><path d="M12 3H7a3 3 0 0 0-3 3v4h8v2H6a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h5" /><path d="M12 21h5a3 3 0 0 0 3-3v-4h-8v-2h6a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3h-5" /><circle cx="8" cy="6" r=".7" /><circle cx="16" cy="18" r=".7" /></>,
+  "ai-agents": <><circle cx="12" cy="12" r="3" /><circle cx="4" cy="5" r="2" /><circle cx="20" cy="5" r="2" /><circle cx="4" cy="19" r="2" /><circle cx="20" cy="19" r="2" /><path d="m6 6 4 4m4 0 4-4M6 18l4-4m4 0 4 4" /></>,
   genai: <><path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z" /><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z" /></>,
   "document-processing": <><path d="M6 2h8l4 4v16H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" /><path d="M14 2v5h5M8 11h8M8 15h8M8 19h5" /></>,
   aws: <><path d="M4 15a4 4 0 0 1 2-7 6 6 0 0 1 11 1 4 4 0 0 1 1 8H6" /><path d="M7 20c3 1 7 1 10-1m-2 2 2-2-2-1" /></>,

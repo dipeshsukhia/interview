@@ -25,6 +25,7 @@ const preferredContentOrder = [
   "mysql.md",
   "javascript.md",
   "genai.md",
+  "ai-agents.md",
   "document-processing.md",
   "aws.md",
   "devops.md",
