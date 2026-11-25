@@ -22,7 +22,10 @@ class Order {
 }
 ```
 
-Purpose: horizontal code reuse. If two unrelated classes need the same behavior (e.g., `HasUuid`, `Loggable`, `Cacheable`) but don't share a natural inheritance relationship, a trait avoids copy-pasting the same methods into both, and avoids forcing an artificial base class. Laravel itself relies heavily on this pattern (`SoftDeletes`, `Notifiable`, `HasFactory`).
+Purpose: horizontal code reuse.
+
+- If two unrelated classes need the same behavior (e.g., `HasUuid`, `Loggable`, `Cacheable`) but don't share a natural inheritance relationship, a trait avoids copy-pasting the same methods into both, and avoids forcing an artificial base class.
+- Laravel itself relies heavily on this pattern (`SoftDeletes`, `Notifiable`, `HasFactory`).
 
 Notes: if two traits used in the same class define a method with the same name, PHP throws a fatal error unless you resolve it with `insteadof`/`as` in the class body.
 
@@ -55,7 +58,10 @@ Both are PHP extensions for talking to a database.
 | Named parameters | Yes (`:name`) | No, positional `?` only |
 | Prepared statements | Yes | Yes |
 
-PDO is the better default for portability and consistency (Laravel's own DB layer is built on PDO under the hood). MySQLi is fine if you're MySQL-only and want the procedural style, or need MySQL-specific features not exposed by PDO. Both support prepared statements, which is what actually protects against SQL injection — the driver choice itself isn't a security decision.
+PDO is the better default for portability and consistency (Laravel's own DB layer is built on PDO under the hood).
+
+- MySQLi is fine if you're MySQL-only and want the procedural style, or need MySQL-specific features not exposed by PDO.
+- Both support prepared statements, which is what actually protects against SQL injection — the driver choice itself isn't a security decision.
 
 ### What is a cookie in PHP?
 A small piece of data stored on the client's browser, sent back to the server with every subsequent request to that domain. Set with `setcookie($name, $value, $expire, $path, $domain, $secure, $httponly)`, read via `$_COOKIE`. Common uses: remembering login state (usually a signed/encrypted token, not raw credentials), preferences, tracking. In Laravel, cookies are automatically encrypted/signed by the `EncryptCookies` middleware unless explicitly excluded, and `Cookie::queue()` is the idiomatic way to set one within the framework.
@@ -372,7 +378,11 @@ RateLimiter::for('api', function (Request $request) {
         : Limit::perMinute(20)->by($request->ip());
 });
 ```
-Then apply via `->middleware('throttle:api')` on routes. Under the hood it's a sliding/fixed window counter in cache, incrementing per key and comparing against the limit, returning `429 Too Many Requests` with a `Retry-After` header once exceeded. For custom (non-Laravel) implementations, the same idea works with Redis `INCR` + `EXPIRE` on a key like `throttle:{client_id}:{minute_bucket}`.
+
+Then apply via `->middleware('throttle:api')` on routes.
+
+- Under the hood it's a sliding/fixed window counter in cache, incrementing per key and comparing against the limit, returning `429 Too Many Requests` with a `Retry-After` header once exceeded.
+- For custom (non-Laravel) implementations, the same idea works with Redis `INCR` + `EXPIRE` on a key like `throttle:{client_id}:{minute_bucket}`.
 
 ### Which HTTP methods can a PHP REST API handle?
 The REST convention: `GET` (read), `POST` (create), `PUT` (full replace/update), `PATCH` (partial update), `DELETE` (remove). PHP itself doesn't restrict HTTP methods — it's the web server/framework routing that decides which are recognized. HTML forms only natively support `GET`/`POST`, so Laravel simulates `PUT`/`PATCH`/`DELETE` for HTML forms via a hidden `_method` field (`@method('PUT')` in Blade) which the `MethodOverride` middleware reads and treats as the real verb — but for actual API clients (fetch/axios/Postman/mobile apps) you send the real `PUT`/`PATCH`/`DELETE` HTTP method directly, no simulation needed.

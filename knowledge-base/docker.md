@@ -3,7 +3,10 @@
 ### What is Docker?
 Docker is a platform and toolset for building, distributing, and running container images. An image packages an application and its runtime dependencies; a container runs an image with an isolated process environment. Containers use the host kernel, so they are lighter than full virtual machines but are not the same isolation boundary.
 
-The image build describes the runtime environment, while the container supplies the running process and its configuration. A typical workflow builds an image once, tags it, and promotes that same artifact through environments. Do not treat a container as a lightweight security boundary equivalent to a virtual machine.
+The image build describes the runtime environment, while the container supplies the running process and its configuration.
+
+- A typical workflow builds an image once, tags it, and promotes that same artifact through environments.
+- Do not treat a container as a lightweight security boundary equivalent to a virtual machine.
 
 ```dockerfile
 FROM php:8.3-cli
@@ -27,7 +30,10 @@ docker stop web
 Use `docker run` with an image and any needed options. The command creates the container if needed and starts it; `--detach` runs it in the background, `--name` assigns a readable name, and `-p` publishes a port.
 
 
-The image must be available locally or pullable from a registry, and the selected host port must be unused. Add environment variables, volumes, networks, and resource limits only as the service requires. Inspect the container logs and health state after startup to distinguish an application failure from a Docker networking issue.
+The image must be available locally or pullable from a registry, and the selected host port must be unused.
+
+- Add environment variables, volumes, networks, and resource limits only as the service requires.
+- Inspect the container logs and health state after startup to distinguish an application failure from a Docker networking issue.
 
 ```bash
 docker run --name web -d -p 8080:80 nginx:alpine
@@ -36,7 +42,10 @@ docker run --name web -d -p 8080:80 nginx:alpine
 ### What is a Docker image?
 An image is a layered, read-only template containing a filesystem and configuration used to create containers. Images can be built from a Dockerfile, tagged, and stored in a registry. Pin versions or digests in production so builds are repeatable and review image updates deliberately.
 
-Each build instruction can add a layer, and unchanged layers may be reused from cache. Smaller images generally download and scan faster, but should still include the libraries and certificates the application needs. Use a maintained base image, scan updates, and avoid embedding credentials in image layers.
+Each build instruction can add a layer, and unchanged layers may be reused from cache.
+
+- Smaller images generally download and scan faster, but should still include the libraries and certificates the application needs.
+- Use a maintained base image, scan updates, and avoid embedding credentials in image layers.
 
 ```bash
 docker build -t my-app:1.0 .
@@ -57,7 +66,10 @@ docker ps -a
 ### How does a Docker image differ from a container?
 An image is the immutable template; a container is an instance created from that template with runtime state. You can create multiple containers from one image. Removing a container does not remove the image, and deleting a container’s writable layer may discard data that was not placed in a volume.
 
-A container adds a writable layer and runtime settings such as environment variables, mounts, and network attachments. Rebuilding an image does not change an already-running container; recreate it from the new image to apply the update. Store databases and user uploads in managed volumes or external storage.
+A container adds a writable layer and runtime settings such as environment variables, mounts, and network attachments.
+
+- Rebuilding an image does not change an already-running container; recreate it from the new image to apply the update.
+- Store databases and user uploads in managed volumes or external storage.
 
 ```bash
 docker pull nginx:alpine       # fetch the image
@@ -68,7 +80,10 @@ docker run --name site nginx:alpine  # create and start a container
 A Dockerfile contains ordered instructions for building an image, such as selecting a base, copying files, and setting the start command. Keep build context small, avoid copying secrets, use appropriate base versions, and run the application as a non-root user when practical.
 
 
-Docker executes Dockerfile instructions in order, so copying dependency manifests before frequently changing source files can preserve useful build cache. Add a `.dockerignore` to exclude `.git`, build output, local secrets, and dependencies that should be installed inside the image. Tag builds explicitly for traceable releases.
+Docker executes Dockerfile instructions in order, so copying dependency manifests before frequently changing source files can preserve useful build cache.
+
+- Add a `.dockerignore` to exclude `.git`, build output, local secrets, and dependencies that should be installed inside the image.
+- Tag builds explicitly for traceable releases.
 
 ```dockerfile
 FROM node:22-alpine
@@ -86,7 +101,10 @@ Build it with `docker build -t my-app:local .`.
 Docker Compose defines and runs a multi-container application from a YAML file. It can describe services, networks, volumes, and environment settings for local development or simple deployments. The current CLI form is `docker compose`.
 
 
-Compose is especially useful for local stacks where an application needs a database, cache, or queue. Service names work as DNS names on the Compose network, so code inside one service should connect to `db:3306`, not `localhost`. Use health checks or application retry logic because startup order does not guarantee readiness.
+Compose is especially useful for local stacks where an application needs a database, cache, or queue.
+
+- Service names work as DNS names on the Compose network, so code inside one service should connect to `db:3306`, not `localhost`.
+- Use health checks or application retry logic because startup order does not guarantee readiness.
 
 ```yaml
 services:
@@ -113,7 +131,10 @@ docker run -v mysql-data:/var/lib/mysql mysql:8
 Docker networks let containers communicate with each other and control how they connect to external networks. Containers on a user-defined bridge network can resolve each other by name; published ports expose selected container ports to the host. Network commands create, inspect, connect, and remove networks.
 
 
-A user-defined bridge gives related containers name-based communication without publishing every service port to the host. Publish only the ports that external clients need. For production, consider network policy and orchestrator-specific controls, since Docker network membership alone is not a complete authorization mechanism.
+A user-defined bridge gives related containers name-based communication without publishing every service port to the host.
+
+- Publish only the ports that external clients need.
+- For production, consider network policy and orchestrator-specific controls, since Docker network membership alone is not a complete authorization mechanism.
 
 ```bash
 docker network create app-network

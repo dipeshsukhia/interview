@@ -30,7 +30,10 @@ An index is a data structure (typically a B-Tree, or hash for MEMORY tables) tha
 ### How does a stored procedure differ from a function in MySQL?
 A stored procedure is invoked with `CALL` and can return result sets or use `OUT` parameters; it is often used for a sequence of database operations. A stored function returns a value and can be used in expressions, subject to restrictions on side effects and statements. Use either when it meaningfully centralizes database logic; do not move logic into the database automatically.
 
-Procedures are called explicitly and may perform multiple statements or return result sets; functions are embedded in expressions and return a scalar value. Privilege, replication, determinism, and binary logging rules can also influence which is appropriate. Keep database routines version-controlled and deploy them through the same migration process as schema changes.
+Procedures are called explicitly and may perform multiple statements or return result sets; functions are embedded in expressions and return a scalar value.
+
+- Privilege, replication, determinism, and binary logging rules can also influence which is appropriate.
+- Keep database routines version-controlled and deploy them through the same migration process as schema changes.
 
 ```sql
 DELIMITER //
@@ -56,7 +59,10 @@ In practice, most production schemas target 3NF, then deliberately denormalize s
 ### What storage engines does MySQL provide?
 InnoDB is the default general-purpose engine and supports transactions, row-level locking, and foreign keys. MyISAM is a legacy non-transactional engine without foreign keys. Other engines such as MEMORY, NDB, or MyRocks may be available depending on the distribution and installation. Check the server’s supported engines before relying on one.
 
-Engine choice affects transaction support, locking, crash recovery, indexing features, and operational behavior. InnoDB is the default for most application data. Engines may differ by MySQL distribution and version, so inspect what the target server supports and test operational tasks such as backup, restore, and replication for that engine.
+Engine choice affects transaction support, locking, crash recovery, indexing features, and operational behavior.
+
+- InnoDB is the default for most application data.
+- Engines may differ by MySQL distribution and version, so inspect what the target server supports and test operational tasks such as backup, restore, and replication for that engine.
 
 ```sql
 CREATE TABLE transactional_orders (
@@ -71,7 +77,10 @@ SHOW ENGINES;
 For a logical backup, `mysqldump` can export schema and data; restore it with the `mysql` client. For a consistent InnoDB snapshot, use `--single-transaction`, and coordinate with writes or other engines as needed. Larger systems may use physical backups and binary logs for point-in-time recovery. Test restores regularly and protect backup credentials and files.
 
 
-A backup is useful only if it can be restored within the required recovery time and data-loss objectives. Encrypt backups, restrict access, monitor completion, and retain copies outside the primary server or region. Coordinate schema changes and transactional consistency, then rehearse restores on an isolated environment.
+A backup is useful only if it can be restored within the required recovery time and data-loss objectives.
+
+- Encrypt backups, restrict access, monitor completion, and retain copies outside the primary server or region.
+- Coordinate schema changes and transactional consistency, then rehearse restores on an isolated environment.
 
 ```bash
 mysqldump --single-transaction -u app_user -p app_db > app_db.sql
@@ -103,7 +112,10 @@ HAVING COUNT(*) > 1;
 ### What causes MySQL performance problems, and how do you address them?
 Typical causes include full table scans, missing or poorly ordered indexes, expensive sorts, oversized result sets, lock contention, and insufficient memory or I/O capacity. Inspect slow-query logs and execution plans, improve the query or index, and measure again under realistic load. Check connections and contention before changing server settings.
 
-Application patterns such as N+1 queries or fetching whole result sets can create load even when each individual SQL statement looks simple. Correlate slow-query logs with traffic and wait events, then address the highest-impact issue first. Increasing memory or connection limits without diagnosis can worsen contention or cause resource exhaustion.
+Application patterns such as N+1 queries or fetching whole result sets can create load even when each individual SQL statement looks simple.
+
+- Correlate slow-query logs with traffic and wait events, then address the highest-impact issue first.
+- Increasing memory or connection limits without diagnosis can worsen contention or cause resource exhaustion.
 
 ```sql
 EXPLAIN
@@ -135,7 +147,10 @@ COMMIT; -- or ROLLBACK on failure
 Create a `FULLTEXT` index on supported text columns and query it with `MATCH ... AGAINST`. MySQL supports natural-language and Boolean search modes. Check token-size, stopword, language, and engine behavior for your version, and use a dedicated search service if the relevance or scale requirements exceed what the database search provides.
 
 
-Full-text search tokenizes text and ranks matches differently from a substring `LIKE` search; it does not necessarily match short terms or every language equally. Keep the indexed columns and search expression aligned, and test results with real content. A search engine may be preferable for stemming, typo tolerance, faceting, or complex relevance tuning.
+Full-text search tokenizes text and ranks matches differently from a substring `LIKE` search; it does not necessarily match short terms or every language equally.
+
+- Keep the indexed columns and search expression aligned, and test results with real content.
+- A search engine may be preferable for stemming, typo tolerance, faceting, or complex relevance tuning.
 
 ```sql
 CREATE TABLE articles (
@@ -161,7 +176,10 @@ InnoDB — supports transactions (ACID), foreign keys, row-level locking, crash 
 ### What is table partitioning in MySQL?
 Partitioning divides one logical table into smaller physical partitions based on a key or range, while queries still address the table normally. It can help manage large time-based datasets and enable partition pruning when predicates match the partition key. It is not a substitute for good indexes, and MySQL imposes constraints on partitioned tables, including unique-key requirements.
 
-Partitioning is most useful when queries filter on the partition key or operations can drop/archive entire partitions. It does not distribute one table automatically across servers and may complicate keys, foreign keys, and maintenance. Test partition pruning with `EXPLAIN` and compare against ordinary indexes before partitioning.
+Partitioning is most useful when queries filter on the partition key or operations can drop/archive entire partitions.
+
+- It does not distribute one table automatically across servers and may complicate keys, foreign keys, and maintenance.
+- Test partition pruning with `EXPLAIN` and compare against ordinary indexes before partitioning.
 
 ```sql
 CREATE TABLE events (
@@ -178,7 +196,10 @@ PARTITION BY RANGE (YEAR(occurred_on)) (
 ### What is MySQL replication?
 Replication copies changes from a source server to one or more replicas, commonly through the binary log. It can support read scaling, reporting, and recovery, but asynchronous replication can lag and does not automatically provide safe failover. Monitor lag, configure replication consistently, and use a documented failover process.
 
-Replication is commonly asynchronous, so replicas may serve stale reads and can lag under heavy writes or network interruptions. Do not assume a replica is a current backup or that promoting it is automatic. Applications need a defined read-after-write strategy, monitoring, and tested failover and rejoin procedures.
+Replication is commonly asynchronous, so replicas may serve stale reads and can lag under heavy writes or network interruptions.
+
+- Do not assume a replica is a current backup or that promoting it is automatic.
+- Applications need a defined read-after-write strategy, monitoring, and tested failover and rejoin procedures.
 
 ```text
 Example flow: `source server (binary log) → replica (relay log) → replica data`. Configure source and replica with unique server IDs, then monitor replication status and lag with the commands supported by your MySQL version.
@@ -206,7 +227,10 @@ WHERE rnk = 2;
 Group rows by grade and count each group. If grades with zero students should also appear, start from a separate grades table and use a `LEFT JOIN`.
 
 
-If a grade has no students, a query starting from the students table cannot return it. Drive the query from a grades table and left join students, placing filters on the joined table in the join condition so the left join does not turn into an inner join. Count a non-null student key rather than `COUNT(*)` in that case.
+If a grade has no students, a query starting from the students table cannot return it.
+
+- Drive the query from a grades table and left join students, placing filters on the joined table in the join condition so the left join does not turn into an inner join.
+- Count a non-null student key rather than `COUNT(*)` in that case.
 
 ```sql
 SELECT grade, COUNT(*) AS student_count

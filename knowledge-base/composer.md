@@ -13,7 +13,10 @@ composer install
 ### What is composer.lock for?
 `composer.lock` records the exact package versions and references Composer resolved. `composer install` uses the lock file to reproduce that set; `composer update` resolves newer versions allowed by `composer.json` and updates the lock. Commit the lock file for applications, but not normally for reusable libraries.
 
-The lock file matters most in applications, where developers, CI, and production should install the same tested dependency graph. Libraries usually omit it so downstream applications can resolve versions compatible with their own constraints. Avoid running `update` as a routine deployment step because it may change many transitive packages.
+The lock file matters most in applications, where developers, CI, and production should install the same tested dependency graph.
+
+- Libraries usually omit it so downstream applications can resolve versions compatible with their own constraints.
+- Avoid running `update` as a routine deployment step because it may change many transitive packages.
 
 ```bash
 composer install  # installs the exact locked versions
@@ -36,7 +39,10 @@ For example, a framework or runtime SDK belongs in `require`, while PHPUnit or P
 Composer generates `vendor/autoload.php` from the configured autoload rules. With PSR-4, a namespace prefix maps to a directory; include the generated loader once and Composer can find classes by namespace and path.
 
 
-PSR-4 matching is case-sensitive on many production filesystems, so namespace segments and filenames should follow consistent casing. Composer can also autoload class maps, files, or legacy PSR-0 paths. Prefer PSR-4 for application classes, and regenerate the autoloader after changing its configuration.
+PSR-4 matching is case-sensitive on many production filesystems, so namespace segments and filenames should follow consistent casing.
+
+- Composer can also autoload class maps, files, or legacy PSR-0 paths.
+- Prefer PSR-4 for application classes, and regenerate the autoloader after changing its configuration.
 
 ```json
 {
@@ -52,7 +58,10 @@ After changing autoload rules, regenerate the map with `composer dump-autoload`.
 Composer scripts are named commands declared in `composer.json`. They can chain common project tasks such as tests, formatting, or code generation and run with `composer run <script-name>`. Scripts should call tools available to the project and avoid hiding destructive or surprising operations.
 
 
-Scripts can run at lifecycle events, but they should remain predictable and documented because commands may run automatically during install or update. Use Composer plugins only when needed, and review their permissions and provenance. Keep complex workflows in dedicated task runners when the script list becomes difficult to maintain.
+Scripts can run at lifecycle events, but they should remain predictable and documented because commands may run automatically during install or update.
+
+- Use Composer plugins only when needed, and review their permissions and provenance.
+- Keep complex workflows in dedicated task runners when the script list becomes difficult to maintain.
 
 ```json
 {
@@ -75,7 +84,10 @@ composer install                  # reproduces composer.lock
 ### How can a project use different versions of a package?
 A single Composer dependency graph normally resolves one version of a package per package name. Use a version constraint to select a compatible release. If two applications need incompatible major versions, isolate them as separate Composer projects or services; loading both versions into one PHP runtime often causes class and autoloading conflicts.
 
-Composer resolves one dependency graph for the PHP process, and two incompatible releases may define the same class names. If a migration requires both versions, isolate one behind a separate process or service boundary. Aliases and forks can help with development, but do not remove runtime compatibility conflicts.
+Composer resolves one dependency graph for the PHP process, and two incompatible releases may define the same class names.
+
+- If a migration requires both versions, isolate one behind a separate process or service boundary.
+- Aliases and forks can help with development, but do not remove runtime compatibility conflicts.
 
 ```json
 {
@@ -87,7 +99,10 @@ Composer resolves one dependency graph for the PHP process, and two incompatible
 `composer install --optimize-autoloader` builds a class map that can make production class lookup faster. It is commonly used with `--no-dev` for deployment. `--classmap-authoritative` can speed lookup further but assumes all classes are known at build time, so avoid it if the app dynamically generates classes.
 
 
-The optimized class map is most useful for production, where the class set is stable and filesystem probing should be minimized. Generate it as part of the release build rather than committing generated vendor files. Benchmark startup behavior before enabling authoritative class maps, especially with packages that discover classes dynamically.
+The optimized class map is most useful for production, where the class set is stable and filesystem probing should be minimized.
+
+- Generate it as part of the release build rather than committing generated vendor files.
+- Benchmark startup behavior before enabling authoritative class maps, especially with packages that discover classes dynamically.
 
 ```bash
 composer install --no-dev --optimize-autoloader
@@ -96,7 +111,10 @@ composer install --no-dev --optimize-autoloader
 ### What are Composer stability flags?
 Stability levels are `dev`, `alpha`, `beta`, `RC`, and `stable`. The `minimum-stability` setting controls the least stable packages allowed overall; a per-package stability flag such as `@dev` can allow one explicitly selected development dependency. Prefer stable releases unless a development build is intentionally required.
 
-A package constraint can include a stability suffix, for example `dev-main@dev`, while the global minimum remains stable. This narrows the exception to one dependency instead of allowing unstable releases throughout the graph. Pin or constrain development branches carefully and replace them with tagged releases when available.
+A package constraint can include a stability suffix, for example `dev-main@dev`, while the global minimum remains stable.
+
+- This narrows the exception to one dependency instead of allowing unstable releases throughout the graph.
+- Pin or constrain development branches carefully and replace them with tagged releases when available.
 
 ```json
 {
