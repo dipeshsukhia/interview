@@ -114,8 +114,8 @@ IAM: a role is an identity assumed by a service or workload with temporary crede
 - Both give per-pod, short-lived, auditable credentials instead of node-wide permissions.
 
 ### Lambda vs a container worker on EKS?
-Choose Lambda for spiky or low volume traffic, short tasks (under 15 minutes), event-driven glue (S3 event triggers, a webhook sender), minimal operations, and pay-per-use cost. Choose EKS containers for long-running or heavy jobs, large dependencies (OCR and ML libraries beyond the 10 GB image limit, GPU), predictable steady throughput (cheaper per unit at constant load), tight control over concurrency, networking and observability, and workloads that need warm in-memory state.
-- Follow-up trade-offs: cold starts add latency for the first request (mitigated by provisioned concurrency, at a cost); timeouts cap at 15 minutes; concurrency is limited per account/region (reserve and throttle to protect the LLM rate limit); cost is great at low volume and less efficient at sustained high volume.
+Choose Lambda for spiky or low volume traffic, short tasks (within the current standard Lambda timeout limit), event-driven glue (S3 event triggers, a webhook sender), minimal operations, and pay-per-use cost. Choose EKS containers for long-running or heavy jobs, large dependencies (OCR and ML libraries beyond the 10 GB image limit, GPU), predictable steady throughput (cheaper per unit at constant load), tight control over concurrency, networking and observability, and workloads that need warm in-memory state.
+- Follow-up trade-offs: cold starts add latency for the first request (mitigated by provisioned concurrency, at a cost); standard function timeouts currently cap at 30 minutes; concurrency is limited per account/region (reserve and throttle to protect the LLM rate limit); cost is great at low volume and less efficient at sustained high volume.
 - For a 3-minute, CPU-heavy PDF job at 10,000 documents a day, either works; at a million a day, containers with autoscaling usually win on cost.
 
 ### Scaling workers by queue depth?
@@ -154,3 +154,198 @@ Guardrails: cap max replicas by the LLM provider rate limit and the downstream D
 - Compute: right-size pods, scale down to a minimum (KEDA), use Spot instances for stateless workers, and Savings Plans for the baseline.
 - DynamoDB and SQS: on-demand vs provisioned capacity per pattern; batch SQS operations; TTL cleanup.
 - Governance: cost allocation tags per tenant, AWS Budgets and anomaly alerts, and a dashboard of cost per document tracked as a product metric.
+
+### Why run Lambda as a container image instead of a zip?
+Container images support up to 10 GB (zip is 250 MB unzipped), so they suit large dependencies like ML libraries, pandas, or custom binaries. They also give you the same image locally and in production, and a standard Docker workflow.
+
+### How do you deploy a container-based Lambda?
+1. Write a Dockerfile `FROM public.ecr.aws/lambda/python:3.12` (an AWS base image).
+2. Copy your code and set `CMD ["app.handler"]`.
+3. Authenticate: `aws ecr get-login-password | docker login --username AWS --password-stdin <acct>.dkr.ecr.<region>.amazonaws.com`
+4. Build, tag, and push to ECR.
+5. Create or update the function with `--package-type Image --code ImageUri=<ecr-uri>`.
+
+### Does the ECR repo need to be in the same region as the Lambda?
+Yes, same region. Cross-account is possible with an ECR repository policy.
+
+### How do you reduce cold starts with container images?
+- Use slim base images and multi-stage builds.
+- Keep heavy imports lazy or outside the critical path.
+- Use provisioned concurrency.
+- Lambda caches image layers, so keep frequently changing layers last in the Dockerfile.
+
+### Can you use a non-AWS base image?
+Yes, but it must implement the Lambda Runtime API. Add the Runtime Interface Client (RIC), and the Runtime Interface Emulator (RIE) for local testing.
+
+### How do you test locally?
+Run the image with RIE, then `curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{}'`.
+
+### What permissions does Lambda need to pull from ECR?
+The deployer needs `ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, and `ecr:BatchCheckLayerAvailability`. Lambda's service principal needs these in the repository policy for cross-account pulls.
+
+### How do you manage image versions and cleanup?
+Use immutable tags (git SHA) rather than `latest`, and ECR lifecycle policies to expire old images. Enable image scanning on push (or Inspector enhanced scanning).
+
+### IAM user vs. role?
+A user has long-term credentials for a person or app. A role has no permanent credentials. It is assumed temporarily through STS and gives short-lived credentials. Prefer roles for services and cross-account access.
+
+### What are the two policies involved in a role?
+- **Trust policy** says who can assume the role (e.g., `lambda.amazonaws.com`).
+- **Permission policy** says what the role can do.
+
+### Identity-based vs. resource-based policy?
+Identity-based policies attach to a user, group, or role. Resource-based policies attach to the resource (S3 bucket, SQS queue, Lambda) and name a Principal. For cross-account access, both sides generally need to allow it (except where a resource policy directly grants to a role's account in same-account cases).
+
+### How is a policy evaluated?
+Explicit Deny always wins. Otherwise there must be an explicit Allow. The default is implicit deny. SCPs and permission boundaries only limit the maximum permissions; they don't grant anything.
+
+### What is a permission boundary?
+It's a managed policy that sets the maximum permissions an identity can have. The effective permissions are the intersection of the identity policy and the boundary.
+
+### Give an example of least privilege for Lambda reading one S3 bucket.
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject"],
+  "Resource": "arn:aws:s3:::my-bucket/input/*"
+}
+```
+Plus `AWSLambdaBasicExecutionRole` for CloudWatch Logs.
+
+### How does cross-account role assumption work?
+Account B's role trusts Account A in its trust policy. A principal in Account A needs `sts:AssumeRole` permission on that role's ARN. Use `ExternalId` for third-party access.
+
+### Execution role vs. resource policy for Lambda?
+The execution role is what Lambda can do (outbound). The resource policy is who can invoke Lambda (inbound, e.g., S3 or EventBridge).
+
+### S3 consistency model?
+Strong read-after-write consistency for all operations (since Dec 2020), including overwrites, deletes, and list.
+
+### How do you secure a bucket?
+- Block Public Access (account and bucket level).
+- Bucket policy with least privilege and `aws:SecureTransport` enforcement.
+- SSE-S3 or SSE-KMS encryption (new objects are encrypted by default).
+- VPC endpoints and access points.
+- Access logging and CloudTrail data events.
+
+### Versioning vs. replication?
+Versioning keeps multiple versions of an object in a bucket, protecting against accidental delete or overwrite. Replication (CRR/SRR) copies objects to another bucket and requires versioning on both.
+
+### What are lifecycle rules?
+They transition objects between storage classes or expire them after N days, and can clean up incomplete multipart uploads and old versions.
+
+### How do you upload large files?
+Multipart upload is recommended above 100 MB and required above 5 GB (max object 50 TB). Transfer Acceleration helps for long distances.
+
+### How do you trigger processing on upload?
+S3 Event Notifications to Lambda, SQS, or SNS, or send events to EventBridge for richer filtering and multiple targets.
+
+### S3 performance?
+At least 3,500 PUT and 5,500 GET requests per second per prefix. Spread across prefixes and use multipart and byte-range fetches to parallelize.
+
+### What is EventBridge?
+A serverless event bus that routes events from AWS services, custom apps, and SaaS partners to targets based on rules.
+
+### Event bus types?
+Default bus (AWS service events), custom buses (your apps), and partner buses (SaaS).
+
+### What is an event pattern?
+A JSON filter that matches event content:
+```json
+{
+  "source": ["aws.s3"],
+  "detail-type": ["Object Created"],
+  "detail": { "bucket": { "name": ["my-bucket"] } }
+}
+```
+
+### Rules vs. Scheduler?
+Rules are for event matching and basic cron or rate schedules. EventBridge Scheduler is the newer service for large-scale one-time and recurring schedules, with time zones and flexible windows.
+
+### How do you handle failed deliveries?
+Configure a retry policy (max age and attempts, default up to 24 hours and 185 retries) and a DLQ (SQS) per target.
+
+### EventBridge vs. SNS vs. SQS?
+- SNS: simple pub/sub fan-out with limited filtering.
+- SQS: queue for decoupling and buffering with consumer pull.
+- EventBridge: content-based routing, many sources, schema registry, and transformation.
+
+### What is input transformation?
+It reshapes the event before it reaches the target, using an input path and template, so you pass only the fields the target needs.
+
+### Other features worth mentioning?
+Archive and replay, Schema Registry, API destinations (call external HTTP APIs), Pipes (source to target with filtering and enrichment), and cross-account and cross-region bus targets.
+
+### Delivery guarantee?
+At-least-once, so consumers must be idempotent.
+
+### How does Lambda scale and what are its limits?
+It scales by adding execution environments, one concurrent request each. Default account concurrency is 1,000 per region (raisable). Standard Lambda functions can run for up to 30 minutes, memory 128 MB to 10 GB, ephemeral `/tmp` up to 10 GB.
+
+### Reserved vs. provisioned concurrency?
+Reserved concurrency guarantees and caps a function's share of account concurrency (no extra cost). Provisioned concurrency keeps environments ready to reduce cold starts (extra cost).
+
+### What causes cold starts and how do you mitigate them?
+New environment creation: download code, start runtime, run init code. Mitigate with provisioned concurrency, SnapStart where supported (including current Java, Python, and .NET runtimes), smaller packages, lazy imports, and avoiding VPC-related delays (mostly resolved with Hyperplane ENIs).
+
+### Sync vs. async vs. poll-based invocation?
+- Synchronous: API Gateway, ALB (caller waits).
+- Asynchronous: S3, EventBridge, SNS (Lambda queues internally, retries twice by default, supports DLQ or on-failure destinations).
+- Poll-based (event source mapping): SQS, Kinesis, DynamoDB Streams.
+
+### How do you handle errors in async invocations?
+Configure retry attempts (0 to 2), max event age, and an on-failure destination (SQS, SNS, EventBridge, or Lambda) or DLQ.
+
+### How do you manage secrets and config?
+Environment variables for non-sensitive config. Secrets Manager or SSM Parameter Store (SecureString) for secrets, cached outside the handler. Use the Parameters and Secrets Lambda extension for caching.
+
+### Lambda in a VPC?
+Needed to reach private resources (RDS, ElastiCache). Internet access then requires a NAT Gateway. Use VPC endpoints for AWS services.
+
+### What are layers and extensions?
+Layers package shared libraries or dependencies (up to 5 per function, only with zip functions). Extensions run alongside the function for monitoring, secrets, and security tools.
+
+### How do you make Lambda idempotent?
+Use an idempotency key stored in DynamoDB with a conditional write. Powertools for AWS Lambda provides an idempotency utility.
+
+### Cost optimization?
+Right-size memory (use AWS Lambda Power Tuning), use ARM/Graviton (often cheaper, depending on the workload and region), reduce duration, and batch SQS records.
+
+### How do you configure a DLQ?
+Set a **redrive policy** on the source queue:
+```json
+{"deadLetterTargetArn": "arn:aws:sqs:...:my-dlq", "maxReceiveCount": 5}
+```
+A FIFO queue needs a FIFO DLQ, and a standard queue needs a standard DLQ.
+
+### How do you reprocess DLQ messages?
+Use the **DLQ redrive** feature in the console/API (`StartMessageMoveTask`) to move messages back to the source queue after fixing the bug.
+
+### DLQ retention tip?
+Message retention is based on the original enqueue timestamp, so set the DLQ retention longer (e.g., 14 days) than the source queue.
+
+### How does SQS integrate with Lambda?
+Through an event source mapping that polls the queue. Configure batch size (up to 10,000 for standard with batching window), and enable `ReportBatchItemFailures` so only failed messages return to the queue instead of the entire batch. A standard SQS event source mapping can scale to 1,250 concurrent function instances by default (use `MaximumConcurrency` to limit).
+
+### Short vs. long polling?
+Long polling (`WaitTimeSeconds` up to 20) reduces empty responses and cost. Short polling returns immediately and may miss messages on some servers.
+
+### How do you handle duplicates?
+Standard queues can deliver duplicates, so make consumers idempotent. FIFO uses `MessageDeduplicationId` (5-minute dedup window) or content-based dedup.
+
+### Max message size and retention?
+1 MiB per message (use the S3 extended client for larger payloads). Retention is 1 minute to 14 days (default 4 days).
+
+### Do you need a DLQ on the Lambda too?
+For SQS-triggered Lambda, put the DLQ on the **SQS queue** (redrive policy), not on the Lambda. Lambda's own DLQ and destinations apply only to async invocations.
+
+### Design a pipeline: a file uploaded to S3 gets processed by a containerized Lambda that calls an LLM, with failure handling.
+1. The file lands in S3 and emits an `Object Created` event to EventBridge.
+2. An EventBridge rule filters on prefix and suffix and sends the event to an SQS queue (buffering and backpressure).
+3. The queue has a DLQ with `maxReceiveCount=3` and a CloudWatch alarm on DLQ depth.
+4. A container-image Lambda (from ECR) consumes batches with partial batch response.
+5. The Lambda's IAM role is least-privilege: S3 read on the prefix, SQS consume, and Bedrock invoke on specific model ARNs.
+6. The Lambda calls the LLM through the GenAI gateway (rate limits, guardrails, cost tracking).
+7. It writes results to S3 and is idempotent via a DynamoDB key.
+
+**Follow-up:** *Why SQS between EventBridge and Lambda?* It smooths bursts, protects the LLM's rate limits, gives per-message retries, and provides a DLQ for failures.

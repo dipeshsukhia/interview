@@ -130,3 +130,33 @@ VLM: a model that accepts images and text and reasons over both. Sending the pag
 ### Autonomous agent vs deterministic workflow?
 Use a deterministic workflow when the steps are known and repeatable, as in document extraction (classify, OCR, extract, validate, save). It is cheaper, faster, testable, auditable and predictable. Use an agent when the path cannot be predefined: open-ended research, investigating a discrepancy across systems, or tasks needing dynamic tool selection. A good pattern is a deterministic pipeline with a small bounded agentic step for hard cases (for example, 'resolve the ambiguous vendor name using up to three lookups').
 - **Follow-up:** context and memory in a long-running agent: keep a compact working state (task, plan, key findings) rather than the full transcript; summarize or compact old turns; store long-term facts externally (database or vector store) and retrieve on demand; offload large tool outputs to files and keep only references; checkpoint progress so the agent can resume; and enforce step, token and time budgets.
+
+### What is a GenAI gateway and why use one?
+A single entry point between applications and LLMs. It centralizes authentication, rate limiting, cost tracking, routing, guardrails, logging, and provider abstraction, so teams don't each integrate and secure models separately.
+
+### What features should it provide?
+- Unified API (often OpenAI-compatible) across providers.
+- AuthN/AuthZ (IAM, Cognito, API keys, JWT).
+- Rate limiting, quotas, and budgets per team or key.
+- Model routing, fallback, and load balancing.
+- Caching (semantic or exact).
+- Guardrails, PII masking, and prompt logging.
+- Observability: tokens, latency, and cost per request.
+
+### How would you build one on AWS?
+Client → API Gateway (or ALB) → Lambda/ECS service (gateway logic) → Amazon Bedrock (`InvokeModel` / `Converse` API). Add WAF, Cognito/IAM auth, DynamoDB for quotas and keys, CloudWatch and X-Ray for observability, and Secrets Manager for external provider keys.
+
+### How do you handle streaming responses?
+Use Bedrock `ConverseStream`/`InvokeModelWithResponseStream`. API Gateway REST APIs now support response streaming, and Lambda response streaming (Function URLs) or WebSocket/SSE through ALB/ECS are also options. Note API Gateway's 29-second default integration timeout for non-streaming.
+
+### How do you control cost?
+Per-tenant token quotas, usage plans, model tiering (cheap model for simple tasks), prompt and response caching, max-token limits, Bedrock prompt caching, and budgets and alerts.
+
+### How do you add safety?
+Amazon Bedrock Guardrails (content filters, denied topics, PII redaction, grounding checks) applied in the gateway, plus input validation and output filtering.
+
+### How do you handle throttling and reliability?
+Exponential backoff with jitter, fallback to another model or region, cross-region inference profiles in Bedrock, and circuit breakers.
+
+### How do you ensure data privacy?
+Bedrock doesn't use your prompts to train base models. Use VPC endpoints (PrivateLink), KMS encryption, redaction of PII before logging, and IAM scoped to specific model ARNs.
